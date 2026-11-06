@@ -1,6 +1,6 @@
 # CONTEXT — Penghitung Kendaraan dari Video
 
-Versi dokumen: 0.1 | Dibuat: 6 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
+Versi dokumen: 0.2 | Dibuat/diperbarui: 6 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
 
 Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent yang membantu pengerjaan. Baca sebelum merancang, menulis kode, menguji, atau mengubah lingkup proyek. Isinya mencakup tujuan, istilah, spesifikasi perilaku, rancangan teknis awal, pembagian pekerjaan, dan kriteria selesai agar hasil dari agent yang berbeda dapat digabungkan.
 
@@ -11,6 +11,8 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 **Usulan awal dokumen ini:** video unggahan, aplikasi lokal berbasis Python dan Streamlit, deteksi YOLO11n, tracking ByteTrack, satu garis penghitung dua arah, empat kelas kendaraan, serta eksperimen CLAHE. Pilihan ini menjadi baseline kerja bersama sampai pemilik proyek menggantinya; pilihan tersebut belum merupakan persyaratan resmi dosen.
 
 **Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
+
+**Pembaruan tahap fondasi:** kontrak data, konfigurasi YAML, geometri garis, counter dua arah, prapemrosesan none/CLAHE, dan CLI simulasi sintetis sudah diimplementasikan. Lingkungan lokal yang dipakai adalah Python 3.12 di Windows, menggantikan titik awal Python 3.11; paket mendeklarasikan Python >=3.11, tetapi pengujian saat ini pada 3.12. YOLO/ByteTrack, decoder/pipeline video, UI, ekspor run video, dan evaluasi nyata belum terintegrasi. Lihat README untuk perintah aktual dan `docs/agent-b-handoff.md` untuk pekerjaan yang dapat dimulai rekan.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -202,7 +204,7 @@ Satu adapter boleh memakai API tracking Ultralytics yang sekaligus menjalankan d
 
 | Komponen | Pilihan baseline | Alasan rancangan |
 | --- | --- | --- |
-| Bahasa | Python 3.11 sebagai titik awal | Satu bahasa untuk CV, evaluasi, dan UI |
+| Bahasa | Python 3.12 pada lingkungan fondasi yang diuji | Satu bahasa untuk CV, evaluasi, dan UI; Python 3.11 adalah usulan awal |
 | Video dan citra | OpenCV, NumPy | Pembacaan frame, konversi warna, CLAHE, anotasi |
 | Model | Ultralytics YOLO11n, bobot `yolo11n.pt` | Model kecil pretrained untuk memulai pengujian lokal |
 | Tracker | ByteTrack, `bytetrack.yaml` dipilih eksplisit | Baseline asosiasi untuk kamera diam; hasil ID diuji pada data tim |
@@ -252,7 +254,9 @@ project/
 ├── LICENSE
 ├── .gitignore
 ├── .gitattributes
+├── pyproject.toml
 ├── requirements.txt
+├── constraints.txt
 ├── app.py
 ├── configs/default.yaml
 ├── src/vehicle_counter/
@@ -262,6 +266,7 @@ project/
 │   ├── tracking.py
 │   ├── geometry.py
 │   ├── counting.py
+│   ├── simulation.py
 │   ├── pipeline.py
 │   ├── visualization.py
 │   ├── exporting.py
@@ -273,6 +278,8 @@ project/
 ├── outputs/
 └── docs/experiments/
 ```
+
+Struktur ini mencakup rencana akhir; berkas yang benar-benar tersedia dirangkum di README. Definisi dependensi berada di `pyproject.toml`; `requirements.txt` memanggil instalasi editable dengan ekstra tahap fondasi, dan `constraints.txt` merekam versi dependensi yang diuji.
 
 `tracking.py` memiliki lifecycle model/tracker per run dan mengubah keluaran library menjadi kontrak internal. `geometry.py` dan `counting.py` berisi aturan domain. `pipeline.py` mengatur pembacaan dan pemrosesan video. `app.py` mengelola interaksi pengguna; rumus hitungan berada di counter. `exporting.py` menulis hasil dari event yang sama dengan yang dipakai UI. `evaluation.py` membandingkan hasil terhadap GT.
 
@@ -301,6 +308,8 @@ process_video(source_path, config, output_root, on_progress=None) -> RunResult
 counter.update(observations_for_frame) -> list[CountEvent]
 counter.summary() -> CountSummary
 ```
+
+Counter yang sudah tersedia dibangun dengan `VehicleCounter(run_id, config, width=..., height=...)`. `counter.events` memberikan tuple event. `update` menerima satu batch observasi per frame; ID dalam batch harus unik, frame/timestamp sama, dan batch nonkosong harus meningkat terhadap sebelumnya. Batch kosong diperbolehkan. Untuk reset run, buat instance baru. `process_video(...)` tetap rancangan untuk tahap pipeline berikutnya.
 
 `process_video` bersifat sinkron untuk baseline. Callback progres membawa snapshot yang aman dibaca UI, bukan objek tracker yang dapat dimutasi. `preview_frame_bgr` adalah salinan frame beranotasi atau `null` ketika pembaruan tidak membawa gambar; UI mengonversinya ke RGB untuk ditampilkan. Pipeline boleh membatasi frekuensi callback/preview agar tampilan tidak memperlambat analisis. Pengaturan widget baru berlaku pada run berikutnya. Pemrosesan model dilakukan sekali per run; interaksi UI setelah selesai memakai hasil tersimpan, bukan menjalankan video ulang tanpa perintah pengguna.
 
@@ -525,6 +534,8 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-06 | Usulan baseline | Empat kelas, Streamlit lokal, dan keluaran CSV/JSON/video |
 | 2026-11-06 | Usulan eksperimen | Bandingkan none dengan CLAHE tanpa mengasumsikan peningkatan hasil |
 | 2026-11-06 | Instruksi pengguna | Inisialisasi dan push repositori ke `HUB37T/Vehicle-Tracking`; tambahkan README, aturan Git, dan arahan agent. Implementasi aplikasi tetap tahap berikutnya |
+| 2026-11-06 | Implementasi fondasi | Pengguna meminta mulai dari bagian yang dapat dikerjakan tanpa video. Kontrak, konfigurasi, counter, prapemrosesan, dan simulasi tersedia; simulasi selalu berlabel sintetis |
+| 2026-11-06 | Lingkungan aktual | Memakai Python 3.12 yang sudah tersedia, dengan dependensi fondasi tercatat di constraints.txt. Integrasi dependensi YOLO/Streamlit diuji pada tahap berikutnya |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 

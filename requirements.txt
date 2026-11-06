@@ -1,0 +1,2 @@
+# Lightweight foundation and image processing; YOLO/Streamlit come with their integration.
+-e .[dev,vision]

@@ -1,0 +1,17 @@
+model_weights: yolo11n.pt
+tracker_config: bytetrack.yaml
+device: cpu
+imgsz: 640
+detector_conf: 0.10
+vehicle_classes: [car, motorcycle, bus, truck]
+preprocess:
+  mode: none
+  clahe_clip_limit: 2.0
+  clahe_tile_grid_size: [8, 8]
+counting_line:
+  line_id: main
+  p1: [0.10, 0.60]
+  p2: [0.90, 0.60]
+  epsilon_height_fraction: 0.01
+min_track_hits: 3
+max_crossing_gap_seconds: 0.5

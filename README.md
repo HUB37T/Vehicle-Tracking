@@ -6,7 +6,9 @@ Pengguna mengunggah rekaman jalan dari kamera diam, mengatur garis virtual, lalu
 
 ## Status proyek
 
-Saat ini repositori berisi dokumentasi dan rancangan awal. Aplikasi, dependensi, bobot model, serta hasil evaluasi belum tersedia. Pilihan teknis berikut merupakan baseline yang dapat disesuaikan dengan ketentuan dosen dan kesepakatan tim.
+Fondasi Python sudah tersedia: kontrak data bersama, konfigurasi YAML tervalidasi, geometri garis, counter dua arah, prapemrosesan none/CLAHE, serta simulasi dengan observasi sintetis. Pengujian dijalankan pada Python 3.12 di Windows.
+
+Integrasi YOLO/ByteTrack, pembacaan video, aplikasi Streamlit, ekspor run video, dan evaluasi pada rekaman nyata masih tahap berikutnya. Simulasi saat ini tidak menjalankan detektor maupun tracker dan tidak menunjukkan akurasi model.
 
 ## Rencana fitur
 
@@ -33,7 +35,61 @@ git clone https://github.com/HUB37T/Vehicle-Tracking.git
 cd Vehicle-Tracking
 ```
 
-Petunjuk pemasangan dependensi dan menjalankan aplikasi ditambahkan setelah implementasi pertama berhasil diuji. Untuk tugas agent pertama, gunakan contoh prompt pada bagian 20 di `CONTEXT.md`.
+## Instalasi fondasi proyek
+
+Gunakan Python 3.12 untuk mengikuti lingkungan yang sudah diuji. Dari folder repositori, jalankan di PowerShell:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -c constraints.txt
+```
+
+Aktivasi lingkungan tidak diperlukan karena perintah menunjuk langsung ke Python proyek. Pada macOS/Linux, gunakan `python3.12 -m venv .venv` dan ganti `.\.venv\Scripts\python.exe` dengan `.venv/bin/python`.
+
+`pyproject.toml` adalah sumber definisi paket dan dependensi. `constraints.txt` mencatat versi dependensi yang diuji pada tahap fondasi; kombinasi lengkap dengan YOLO dan Streamlit perlu diuji ulang saat integrasi. Bobot model tidak diunduh pada tahap ini.
+
+## Mencoba tanpa video
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.simulation --config configs/default.yaml
+```
+
+Simulasi berisi lima Track ID buatan. Dengan konfigurasi default, hanya dua crossing sah yang dihitung: satu `car` ke arah `A_TO_B` dan satu `motorcycle` ke arah `B_TO_A`. Track diam, track pada zona netral, dan track di luar ujung garis tidak dihitung. Hasil JSON berlabel `source_kind: synthetic`.
+
+Untuk menyimpan data contoh bagi antarmuka:
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.simulation --output outputs/simulation.json
+```
+
+Lihat [handoff Agent B](docs/agent-b-handoff.md) untuk kontrak yang sudah dapat dipakai temanmu dan batas integrasi yang masih menunggu pipeline video.
+
+## Menjalankan pemeriksaan
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
+.\.venv\Scripts\python.exe -m pip check
+```
+
+Tes mencakup aturan crossing, konsistensi ringkasan dengan event log, input yang tidak valid, konfigurasi, prapemrosesan, dan simulasi. Pengujian counter tidak memerlukan video, GPU, atau model YOLO. CLAHE diuji menggunakan citra sintetis; manfaatnya pada kendaraan perlu dievaluasi kemudian.
+
+## Struktur yang sudah tersedia
+
+```text
+configs/default.yaml             Konfigurasi awal
+src/vehicle_counter/contracts.py Kontrak data bersama dan konfigurasi immutable
+src/vehicle_counter/config.py    Pembacaan YAML dan snapshot konfigurasi
+src/vehicle_counter/geometry.py  Garis berhingga dan arah sisi
+src/vehicle_counter/counting.py  Event crossing dan ringkasan hitungan
+src/vehicle_counter/preprocessing.py  Mode none dan CLAHE
+src/vehicle_counter/simulation.py     Contoh observasi sintetis dan CLI
+tests/                          Pengujian otomatis
+docs/agent-b-handoff.md          Panduan integrasi untuk teman/Agent B
+```
+
+Tahap berikutnya untuk Agent A adalah adapter YOLO/ByteTrack dan pipeline pembacaan video setelah data tersedia. Agent B dapat mulai mengembangkan tampilan dan ekspor menggunakan fixture berlabel sesuai handoff.
 
 ## Data dan bobot model
 
@@ -44,7 +100,7 @@ Rencana lokasi lokal:
 - `models/`: bobot model yang diunduh.
 - `outputs/`: keluaran setiap run.
 
-Folder tersebut dibuat saat dibutuhkan. Video, bobot, dan keluaran analisis diabaikan Git. Dokumentasikan sumber, izin penggunaan, dan cara memperoleh data/bobot agar percobaan dapat diulang. Berkas anotasi dan dokumentasi eksperimen dapat dimasukkan ke repositori selama layak dibagikan.
+Folder berisi petunjuk lokal; video, bobot, dan keluaran analisis diabaikan Git. Dokumentasikan sumber, izin penggunaan, dan cara memperoleh data/bobot agar percobaan dapat diulang. Berkas anotasi dan dokumentasi eksperimen dapat dimasukkan ke repositori selama layak dibagikan.
 
 ## Lisensi
 
