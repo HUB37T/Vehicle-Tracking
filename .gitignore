@@ -1,0 +1,63 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Local credentials and application secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Source videos, model weights, and generated analysis output
+/data/videos/*
+!/data/videos/README.md
+!/data/videos/.gitkeep
+/models/*
+!/models/README.md
+!/models/.gitkeep
+/outputs/*
+!/outputs/README.md
+!/outputs/.gitkeep
+/runs/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Temporary files and logs
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS and editor-specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/

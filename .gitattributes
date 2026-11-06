@@ -1,0 +1,6 @@
+# Keep text diffs consistent across Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Windows batch scripts use CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
