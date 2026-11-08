@@ -18,6 +18,7 @@ from vehicle_counter.exporting import export_counts, file_sha256, write_json
 from vehicle_counter.preprocessing import preprocess_frame
 from vehicle_counter.run_evidence import render_evidence, write_evidence
 from vehicle_counter.tracking import FrameTracker, YoloByteTracker
+from vehicle_counter.truck_review import TruckCropReviewer
 from vehicle_counter.video import AnnotatedVideoWriter, VideoReader, verify_output_video
 from vehicle_counter.visualization import FrameAnnotator
 
@@ -111,8 +112,15 @@ def process_video(
             manifest["source"]["sha256"] = file_sha256(reader.path)
             model_start = perf_counter()
             tracker = (tracker_factory or YoloByteTracker)(config, metadata)
+            review_truck = (
+                TruckCropReviewer(config.truck_review_weights)
+                if config.truck_review_weights
+                else None
+            )
             manifest["model_load_seconds"] = perf_counter() - model_start
             manifest["tracker"] = tracker.metadata
+            if review_truck is not None:
+                manifest["truck_review"] = review_truck.metadata
             warnings.extend(tracker.warnings)
             if not tracker.metadata.get("is_model_inference", False):
                 warnings.append(
@@ -135,7 +143,9 @@ def process_video(
                         for item in observations
                     ):
                         raise ValueError("Observasi tracker tidak sesuai frame/timestamp pipeline.")
-                    events = counter.update(observations)
+                    events = counter.update(
+                        observations, frame_bgr=frame, review_truck=review_truck
+                    )
                     annotated = annotator.render(
                         frame,
                         observations,
@@ -163,6 +173,7 @@ def process_video(
                                 config.preprocess,
                                 frame_index=frame_index,
                                 timestamp_seconds=timestamp,
+                                detection_roi_pixels=getattr(tracker, "detection_roi_pixels", None),
                             )
                             evidence_priority = priority
                             manifest["process_evidence"] = {

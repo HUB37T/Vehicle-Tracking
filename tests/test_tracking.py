@@ -75,7 +75,10 @@ def test_tracker_config_requires_bytetrack_and_valid_thresholds(tmp_path):
         load_tracker_settings(str(path))
 
 
-def test_real_bytetrack_association_with_fake_detector_and_fresh_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize("use_roi", [False, True])
+def test_real_bytetrack_association_with_fake_detector_and_fresh_run(
+    monkeypatch, tmp_path, use_roi
+):
     ultralytics = pytest.importorskip("ultralytics")
     from ultralytics.engine.results import Boxes
 
@@ -89,23 +92,31 @@ def test_real_bytetrack_association_with_fake_detector_and_fresh_run(monkeypatch
             calls.append(kwargs)
             x = 20 + int(kwargs["source"][0, 0, 0])
             data = np.array([[x, 20, x + 30, 70, 0.9, 4]], dtype=np.float32)
-            return [SimpleNamespace(boxes=Boxes(data, (100, 100)))]
+            return [SimpleNamespace(boxes=Boxes(data, kwargs["source"].shape[:2]))]
 
     monkeypatch.setattr(ultralytics, "YOLO", lambda _: FakeDetector())
     weights = tmp_path / "fake-weights.pt"
     weights.write_bytes(b"test fixture, not model weights")
-    config = replace(RunConfig(), model_weights=str(weights))
+    roi = (0.08, 0.1, 0.95, 0.9) if use_roi else None
+    config = replace(RunConfig(), model_weights=str(weights), detection_roi=roi)
     metadata = VideoMetadata("synthetic.mp4", 100, 100, 10)
     first = YoloByteTracker(config, metadata)
     ids = []
     for index in range(3):
         frame = np.full((100, 100, 3), index, dtype=np.uint8)
         observations = first.track_frame(frame, frame_index=index, timestamp_seconds=index / 10)
-        assert observations[0].bbox_xyxy[0] == 20 + index
+        offset_x, offset_y = (8, 10) if use_roi else (0, 0)
+        assert observations[0].bbox_xyxy == (
+            20 + index + offset_x,
+            20 + offset_y,
+            50 + index + offset_x,
+            70 + offset_y,
+        )
         ids.append(observations[0].track_id)
     assert len(set(ids)) == 1
     assert calls[0]["classes"] == [4, 7, 9, 12]
     assert calls[0]["save"] is False
+    assert calls[0]["source"].shape[:2] == ((80, 87) if use_roi else (100, 100))
     with pytest.raises(ValueError, match="berurutan"):
         first.track_frame(frame, frame_index=0, timestamp_seconds=0)
     second = YoloByteTracker(config, metadata)

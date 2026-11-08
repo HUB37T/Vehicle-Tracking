@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
 from vehicle_counter.contracts import DIRECTIONS, VEHICLE_CLASSES, CountingLineConfig
@@ -204,3 +205,59 @@ def test_reversing_line_reverses_direction(make_counter, make_observation):
     config = replace(original.config, counting_line=line)
     counter = VehicleCounter("reversed", config, width=101, height=101)
     assert feed(counter, make_observation, [30, 40, 70])[0].direction == "B_TO_A"
+
+
+@pytest.mark.parametrize(
+    ("same_appearance", "cleared_line", "second_timestamp", "expected_total"),
+    [
+        (True, False, 12.0, 1),
+        (False, False, 12.0, 2),
+        (True, True, 12.0, 2),
+        (True, False, 16.0, 2),
+    ],
+)
+def test_replacement_id_requires_visual_match_near_recent_crossing(
+    make_counter, make_observation, same_appearance, cleared_line, second_timestamp, expected_total
+):
+    counter = make_counter(deduplicate_crossings=True)
+    first = np.random.default_rng(4).integers(0, 256, (101, 101, 3), dtype=np.uint8)
+    second = first if same_appearance else np.rot90(first, 2).copy()
+
+    def add(frame, timestamp, track_id, y, image):
+        item = make_observation(frame, y, track_id=track_id, timestamp=timestamp)
+        item = replace(item, bbox_xyxy=(30, y - 25, 70, y))
+        counter.update([item], frame_bgr=image)
+
+    for frame, y in enumerate([45, 49, 54]):
+        add(frame, frame / 10, 1, y, first)
+    if cleared_line:
+        add(3, 0.3, 1, 88, first)
+    for frame, y in enumerate([45, 49, 54], start=4):
+        add(frame, second_timestamp + (frame - 4) / 10, 2, y, second)
+
+    assert counter.summary().total == expected_total
+
+
+@pytest.mark.parametrize(
+    ("original_class", "is_light", "expected_class", "review_calls"),
+    [("truck", True, "car", 1), ("truck", False, "truck", 1), ("bus", True, "bus", 0)],
+)
+def test_crop_review_changes_only_the_counted_truck_class(
+    make_counter, make_observation, original_class, is_light, expected_class, review_calls
+):
+    counter = make_counter()
+    image = np.zeros((101, 101, 3), dtype=np.uint8)
+    calls = []
+
+    def review(frame, observation):
+        assert frame is image
+        calls.append(observation.frame_index)
+        return is_light
+
+    for frame, y in enumerate([30, 40, 70, 80]):
+        observation = make_observation(frame, y, class_name=original_class)
+        counter.update([observation], frame_bgr=image, review_truck=review)
+
+    assert len(calls) == review_calls
+    assert counter.events[0].class_name == expected_class
+    assert counter.summary().by_class_direction[expected_class]["A_TO_B"] == 1

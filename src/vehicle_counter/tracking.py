@@ -182,6 +182,17 @@ class YoloByteTracker:
         from ultralytics.trackers.byte_tracker import BYTETracker
         from ultralytics.utils.torch_utils import select_device
 
+        self.detection_roi_pixels = None
+        if config.detection_roi is not None:
+            left, top, right, bottom = config.detection_roi
+            x1, x2 = round(left * video.width), round(right * video.width)
+            y1, y2 = round(top * video.height), round(bottom * video.height)
+            if min(x2 - x1, y2 - y1) < 2:
+                raise ValueError("detection_roi terlalu kecil pada resolusi video ini.")
+            for x, y in (config.counting_line.p1, config.counting_line.p2):
+                if not (x1 <= x * (video.width - 1) < x2 and y1 <= y * (video.height - 1) < y2):
+                    raise ValueError("Seluruh garis hitung harus berada di dalam detection_roi.")
+            self.detection_roi_pixels = (x1, y1, x2, y2)
         weights = resolve_weights(config.model_weights)
         tracker_path, settings = load_tracker_settings(config.tracker_config)
         try:
@@ -222,6 +233,8 @@ class YoloByteTracker:
             "track_buffer_units": "frames",
             "anchor_source": "matched_detection_bbox",
         }
+        if self.detection_roi_pixels is not None:
+            self.metadata["detection_roi_pixels"] = self.detection_roi_pixels
         provenance = weights.with_suffix(".pt.source.json")
         if provenance.is_file():
             self.metadata["weights_provenance"] = json.loads(provenance.read_text(encoding="utf-8"))
@@ -239,8 +252,12 @@ class YoloByteTracker:
             raise ValueError("Frame tracker harus BGR uint8 dengan dimensi video asli.")
         if not np.isclose(timestamp_seconds, frame_index / self._video.source_fps):
             raise ValueError("Timestamp harus mengikuti frame_index / FPS sumber CFR.")
+        detector_frame = frame_bgr
+        if self.detection_roi_pixels is not None:
+            x1, y1, x2, y2 = self.detection_roi_pixels
+            detector_frame = frame_bgr[y1:y2, x1:x2]
         results = self._model.predict(
-            source=frame_bgr,
+            source=detector_frame,
             classes=self._class_ids,
             conf=self._config.detector_conf,
             imgsz=self._config.imgsz,
@@ -249,6 +266,13 @@ class YoloByteTracker:
             save=False,
         )
         detections = results[0].boxes.cpu().numpy()
+        if self.detection_roi_pixels is not None:
+            from ultralytics.engine.results import Boxes
+
+            data = detections.data.copy()
+            data[:, [0, 2]] += x1
+            data[:, [1, 3]] += y1
+            detections = Boxes(data, frame_bgr.shape[:2])
         self.last_detections = tuple(
             VehicleDetection(self._names[int(class_id)], float(score), tuple(map(float, box)))
             for box, score, class_id in zip(

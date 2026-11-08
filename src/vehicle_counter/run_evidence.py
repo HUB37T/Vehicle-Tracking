@@ -30,6 +30,7 @@ def render_evidence(
     *,
     frame_index: int,
     timestamp_seconds: float,
+    detection_roi_pixels: tuple[int, int, int, int] | None = None,
 ) -> NDArray[np.uint8]:
     source_height, source_width = source.shape[:2]
     width, height = 520, 292
@@ -38,11 +39,15 @@ def render_evidence(
     offset_x, offset_y = (width - w) // 2, (height - h) // 2
 
     def thumbnail(frame):
-        small = cv2.resize(frame, (w, h), interpolation=cv2.INTER_AREA)
+        frame_height, frame_width = frame.shape[:2]
+        ratio = min(width / frame_width, height / frame_height)
+        fw, fh = max(1, round(frame_width * ratio)), max(1, round(frame_height * ratio))
+        fx, fy = (width - fw) // 2, (height - fh) // 2
+        small = cv2.resize(frame, (fw, fh), interpolation=cv2.INTER_AREA)
         if small.ndim == 2:
             small = cv2.cvtColor(small, cv2.COLOR_GRAY2BGR)
         panel = np.full((height, width, 3), 18, dtype=np.uint8)
-        panel[offset_y : offset_y + h, offset_x : offset_x + w] = small
+        panel[fy : fy + fh, fx : fx + fw] = small
         return panel
 
     def point(xy: Point) -> tuple[int, int]:
@@ -88,6 +93,13 @@ def render_evidence(
         box(tracking_panel, track.bbox_xyxy, f"{track.class_name} #{track.track_id}", color)
         cv2.circle(tracking_panel, point(track.anchor), 3, (30, 65, 255), -1)
 
+    detector_frame = model_input
+    detector_note = f"Frame yang dipakai model | mode {config.mode}"
+    if detection_roi_pixels is not None:
+        x1, y1, x2, y2 = detection_roi_pixels
+        detector_frame = model_input[y1:y2, x1:x2]
+        detector_note = f"Potongan ROI {x2 - x1} x {y2 - y1} | mode {config.mode}"
+
     panels = (
         ("01  Frame sumber", "Video didekode sebagai BGR 8-bit", thumbnail(source)),
         (
@@ -98,8 +110,8 @@ def render_evidence(
         (clahe_title, clahe_note, clahe_panel),
         (
             "04  Input detektor",
-            f"Frame yang dipakai model | mode {config.mode}",
-            thumbnail(model_input),
+            detector_note,
+            thumbnail(detector_frame),
         ),
         (
             "05  Deteksi YOLO" if detections is not None else "05  Detektor uji",

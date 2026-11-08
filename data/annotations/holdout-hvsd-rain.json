@@ -1,0 +1,30 @@
+{
+  "clip_id": "holdout-hvsd-rain",
+  "source_url": "https://data.mendeley.com/datasets/zdgmdg7p25/1",
+  "source_file": "Dataset.zip / Dataset/rain.mp4",
+  "parent_source_sha256": "efd4ea6e3548b9894caefc59df1d9914c1861f88fc93e7fb9114cb44acb78a9b",
+  "source_sha256": "524522f1e6c79bd19109e25f4f40ad7f22c0cbf0993ffdf77dd2ded34af740f8",
+  "video_metadata": {
+    "source_name": "holdout-hvsd-rain.mp4",
+    "width": 704,
+    "height": 432,
+    "source_fps": 30,
+    "frame_count": 194,
+    "duration_seconds": 6.466666666666667
+  },
+  "counting_line": {
+    "line_id": "main",
+    "p1": [
+      0.86,
+      0.116
+    ],
+    "p2": [
+      0.86,
+      0.854
+    ],
+    "epsilon_height_fraction": 0.01
+  },
+  "scope": "Klip penuh kamera diam saat hujan, dua arah. SUV, van, dan pikap ringan masuk car; truk boks masuk truck.",
+  "review_status": "preliminary_single_visual_review",
+  "method": "Tinjauan frame sumber sebelum kedua run. Perkiraan frame pertama titik tengah bawah kendaraan berada di sisi stabil setelah melintas."
+}

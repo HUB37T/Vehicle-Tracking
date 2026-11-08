@@ -1,0 +1,11 @@
+tracker_config: bytetrack.yaml
+preprocess:
+  mode: clahe
+counting_line:
+  line_id: main
+  p1: [0.535, 0.459]
+  p2: [0.735, 0.459]
+  epsilon_height_fraction: 0.01
+detection_roi: [0.5, 0.2847222222, 0.77734375, 0.6388888889]
+deduplicate_crossings: true
+truck_review_weights: models/mobilenet_v3_large-5c1a4163.pth

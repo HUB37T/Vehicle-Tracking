@@ -1,0 +1,35 @@
+{
+  "clip_id": "holdout-istanbul-stabilized",
+  "source_url": "https://www.pexels.com/video/traffic-on-highway-14359967/",
+  "source_author": "Ahmet Akpolat",
+  "parent_source_sha256": "b9f754a6753963803b1174ca71ef8043d785e6772ee4e11ca18deb738b3e40b5",
+  "source_sha256": "b49c8e4235a68a7cff825d5d34863cb83e5d8d8bffefbd00a74a2fa55ad15e80",
+  "video_metadata": {
+    "source_name": "holdout-istanbul-stabilized.mp4",
+    "width": 1280,
+    "height": 720,
+    "source_fps": 29.97002997002997,
+    "frame_count": 372,
+    "duration_seconds": 12.4124
+  },
+  "counting_line": {
+    "line_id": "main",
+    "p1": [
+      0.535,
+      0.459
+    ],
+    "p2": [
+      0.735,
+      0.459
+    ],
+    "epsilon_height_fraction": 0.01
+  },
+  "scope": "Dua lajur di arus padat Istanbul. Rekaman distabilkan terhadap frame terakhir untuk mengompensasi zoom dan gerak framing. Crossing yang dapat diikuti pada frame sumber masuk anotasi; beberapa titik tengah bawah tertutup dan dianalisis terpisah.",
+  "review_status": "preliminary_single_visual_review",
+  "method": "Tinjauan frame sumber sebelum menjalankan model, memakai batas zona netral. Timestamp diperkirakan dari frame pertama setelah crossing yang masuk sisi A.",
+  "excluded_occlusions": [
+    "Van panel putih dan kendaraan gelap yang membuntutinya, sisi kiri segmen pada bagian awal klip.",
+    "Van kecil putih di depan MPV gelap, sisi kiri segmen pada bagian akhir klip.",
+    "SUV/crossover putih di belakang taksi kuning, sisi kanan segmen."
+  ]
+}

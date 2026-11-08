@@ -112,6 +112,10 @@ Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hi
 
 `vehicle-counter evaluate` menerima satu CSV anotasi, satu JSON pendamping dengan nama yang sama, dan folder hasil run. Evaluator memeriksa checksum video serta garis sebelum mencocokkan event. Contoh perintah, metrik, dan catatan kedua klip ada di [laporan evaluasi](docs/counting-evaluation.md).
 
+Untuk memilih profil tracker pada satu run CLI, gunakan `--tracker-config configs/bytetrack-no-fuse.yaml`. Profil ini memakai `fuse_score: false` dan disediakan untuk eksperimen terhadap baseline. Lihat [hasil dan cara mengulang eksperimen ByteTrack](docs/bytetrack-fuse-score-evaluation.md).
+
+Profil `configs/experiments/vehicles-3-refined.yaml` menguji pemeriksaan kelas SUV/van dan penolakan crossing ganda dengan `fuse_score: true`. [Petunjuk bobot, perintah, dan hasil perbandingan](docs/bytetrack-fuse-score-evaluation.md#uji-lanjutan-dengan-fuse_score-true) tersedia dalam laporan.
+
 ## Mencoba tanpa video
 
 ```powershell

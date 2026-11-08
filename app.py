@@ -26,6 +26,18 @@ MODES = {
     "gaussian": "Gaussian smoothing",
     "unsharp": "Unsharp masking",
 }
+DEMO_EXPERIMENTS = {
+    "holdout-istanbul-stabilized.mp4": (
+        "istanbul-recovery.yaml",
+        "[Ahmet Akpolat / Pexels](https://www.pexels.com/video/traffic-on-highway-14359967/)"
+        " · Distabilkan dan diperkecil.",
+    ),
+    "holdout-hvsd-rain.mp4": (
+        "hvsd-rain-recovery.yaml",
+        "[Hadi Sadoghi Yazdi / HVSD](https://data.mendeley.com/datasets/zdgmdg7p25/1)"
+        " · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · Dikonversi ke 30 FPS.",
+    ),
+}
 
 
 @contextmanager
@@ -70,9 +82,9 @@ def _line_preview(frame, config):
     return image
 
 
-def _show_result(result: RunResult, source_name: str, mode: str) -> None:
+def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -> None:
     st.header("Hasil analisis")
-    st.caption(f"{source_name} · {MODES[mode]} · Run {result.run_id}")
+    st.caption(f"{source_name} · {profile} · {MODES[mode]} · Run {result.run_id}")
     if result.status != "completed":
         st.error("Analisis berhenti sebelum selesai. Periksa detail proses.")
         for warning in result.warnings:
@@ -140,17 +152,37 @@ def main() -> None:
             source_name = uploaded.name
         data = uploaded.getvalue() if uploaded is not None else None
         st.subheader("2. Atur analisis")
-        mode = st.selectbox("Prapemrosesan", PREPROCESS_MODES, format_func=MODES.__getitem__)
-        st.caption("P1 dan P2 memakai koordinat 0–1 dari sudut kiri atas.")
-        x1 = st.slider("P1 · X", 0.0, 1.0, config.counting_line.p1[0], 0.01)
-        y1 = st.slider("P1 · Y", 0.0, 1.0, config.counting_line.p1[1], 0.01)
-        x2 = st.slider("P2 · X", 0.0, 1.0, config.counting_line.p2[0], 0.01)
-        y2 = st.slider("P2 · Y", 0.0, 1.0, config.counting_line.p2[1], 0.01)
-        line = None
-        try:
-            line = replace(config.counting_line, p1=(x1, y1), p2=(x2, y2))
-        except ValueError as error:
-            st.error(str(error))
+        profile = "Baseline"
+        use_evaluation_settings = False
+        if local is not None and local.name in DEMO_EXPERIMENTS:
+            profile_file, credit = DEMO_EXPERIMENTS[local.name]
+            st.caption(credit)
+            profile = st.radio("Profil analisis", ("Baseline", "Pemulihan crossing", "Kustom"))
+            use_evaluation_settings = profile != "Kustom"
+            if use_evaluation_settings:
+                recovery = load_config(ROOT / "configs" / "experiments" / profile_file)
+                if profile == "Pemulihan crossing":
+                    config = recovery
+                else:
+                    config = replace(
+                        config, counting_line=recovery.counting_line, preprocess=recovery.preprocess
+                    )
+
+        if use_evaluation_settings:
+            mode, line = config.preprocess.mode, config.counting_line
+            st.caption(f"{MODES[mode]} · Garis dikunci sesuai evaluasi klip ini.")
+        else:
+            mode = st.selectbox("Prapemrosesan", PREPROCESS_MODES, format_func=MODES.__getitem__)
+            st.caption("P1 dan P2 memakai koordinat 0–1 dari sudut kiri atas.")
+            x1 = st.slider("P1 · X", 0.0, 1.0, config.counting_line.p1[0], 0.01)
+            y1 = st.slider("P1 · Y", 0.0, 1.0, config.counting_line.p1[1], 0.01)
+            x2 = st.slider("P2 · X", 0.0, 1.0, config.counting_line.p2[0], 0.01)
+            y2 = st.slider("P2 · Y", 0.0, 1.0, config.counting_line.p2[1], 0.01)
+            line = None
+            try:
+                line = replace(config.counting_line, p1=(x1, y1), p2=(x2, y2))
+            except ValueError as error:
+                st.error(str(error))
 
     ready = False
     with preview:
@@ -192,7 +224,7 @@ def main() -> None:
                     ROOT / "outputs" / "ui",
                     update,
                 )
-            st.session_state.result = (result, source_name, mode)
+            st.session_state.result = (result, source_name, mode, profile)
             if result.status == "completed":
                 progress.progress(1.0, text="Analisis selesai")
             else:

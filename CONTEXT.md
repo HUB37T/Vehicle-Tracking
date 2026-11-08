@@ -12,7 +12,7 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 
 **Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
 
-**Status terbaru:** pipeline video, panel bukti, antarmuka Streamlit, dan evaluator crossing tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch. Hasil awal dua klip jalan dicatat di `docs/counting-evaluation.md`. Peninjau kedua serta evaluasi akhir dengan cakupan kelas dan kondisi yang lebih beragam masih diperlukan.
+**Status terbaru:** pipeline video, panel bukti, antarmuka Streamlit, dan evaluator crossing tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch. Hasil awal dua klip jalan dicatat di `docs/counting-evaluation.md`. Profil ByteTrack `fuse_score: false` tersedia untuk eksperimen pada klip terpisah. Peninjau kedua serta evaluasi akhir dengan cakupan kelas dan kondisi yang lebih beragam masih diperlukan.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -163,8 +163,10 @@ Perpotongan dapat diakumulasi sebagai flag dari segmen antarobservasi selama tra
 
 - Satu Track ID hanya dihitung sekali pada satu garis selama satu run, terlepas dari arah. U-turn dengan ID yang sama tidak menambah event kedua pada MVP.
 - Ini adalah hitungan crossing yang teramati, bukan jaminan jumlah kendaraan fisik unik. ID baru untuk kendaraan yang sama tetap berisiko menghasilkan duplikasi.
+- Profil eksperimen dapat mengaktifkan `deduplicate_crossings`. Kandidat dengan ID baru perlu cocok arah, tumpang tindih kotak, dan tampilan dengan crossing baru-baru ini sebelum dibuang. Riwayat pembanding berakhir setelah 15 detik atau kendaraan lama terlihat cukup jauh dari garis.
 - Count bersumber dari event log. `total = jumlah event`, dan jumlah seluruh bucket kelas–arah harus sama dengan total.
 - Kelas event dipilih dari kelas yang paling sering muncul pada observasi valid track hingga event. Jika seri, gunakan jumlah confidence terbesar; jika masih seri, urutan alfabet nama kelas. Kelas event dibekukan setelah dicatat.
+- Profil eksperimen dapat mengisi `truck_review_weights` untuk memeriksa ulang crop kandidat `truck` dengan MobileNetV3-Large. Bukti kendaraan ringan yang cukup dapat mengubah kelas final menjadi `car` sebelum event dicatat.
 - Detection tanpa ID boleh ditampilkan dengan label yang jelas, tetapi belum menambah count.
 
 ### 7.4 Kasus khusus
@@ -419,6 +421,14 @@ mAP memerlukan anotasi bounding box; IDF1/MOTA/HOTA memerlukan anotasi tracking 
 4. Jalankan kedua mode pada klip uji yang sama dengan tracker baru untuk setiap run.
 5. Bandingkan error count, precision/recall/F1 event, processing FPS, serta frame/histogram sampel. Simpan run ID untuk setiap percobaan.
 6. Bahas kondisi ketika CLAHE membantu, tidak berpengaruh, atau memperburuk hasil. Peningkatan kontras visual tidak otomatis memperbaiki deteksi.
+
+### 15.4 Eksperimen asosiasi ByteTrack
+
+Profil `configs/bytetrack-no-fuse.yaml` menonaktifkan penggabungan confidence dengan biaya asosiasi. Baseline tetap memakai `bytetrack.yaml`. Bandingkan kedua profil dengan video, YOLO, prapemrosesan, dan garis yang sama. Laporkan crossing yang pulih serta event ekstra setelah mengecek identitas kendaraan di frame sumber. Catat kasus dengan titik acuan tertutup secara terpisah. Lihat [evaluasi eksperimen ByteTrack](docs/bytetrack-fuse-score-evaluation.md).
+
+Profil lanjutan `configs/experiments/vehicles-3-refined.yaml` memakai ByteTrack dengan `fuse_score: true`, pemeriksaan kelas, dan penolakan crossing ganda berbasis tampilan. Gunakan profil ini untuk eksperimen antrean kamera diam dan uji dengan klip lain sebelum mengaktifkannya pada profil demo.
+
+Eksperimen deteksi pada klip antrean dapat memilih `detection_roi` sebagai `[x1, y1, x2, y2]` ternormalisasi. Potongan harus memuat seluruh segmen garis dan memberi ruang observasi di kedua sisi. Setelah deteksi, semua kotak dikembalikan ke koordinat frame sumber sebelum asosiasi dan counting. Profil hujan menguji kenaikan `imgsz` dengan detektor frame penuh. Kedua profil memakai pengaturan ByteTrack yang sama. Lihat [audit pemulihan deteksi dan ID](docs/bytetrack-holdout-evaluation.md#uji-pemulihan-deteksi-dan-id).
 
 ## 16. Pengujian dan kriteria selesai
 

@@ -6,6 +6,9 @@
 !requirements-ui.txt
 !configs
 !configs/default.yaml
+!configs/bytetrack-no-fuse.yaml
+!configs/experiments
+!configs/experiments/*.yaml
 !.streamlit
 !.streamlit/config.toml
 !src

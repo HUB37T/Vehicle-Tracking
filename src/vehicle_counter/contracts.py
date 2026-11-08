@@ -104,10 +104,26 @@ class RunConfig:
     counting_line: CountingLineConfig = field(default_factory=CountingLineConfig)
     min_track_hits: int = 3
     max_crossing_gap_seconds: float = 0.5
+    deduplicate_crossings: bool = False
+    truck_review_weights: str | None = None
+    detection_roi: BBox | None = None
 
     def __post_init__(self) -> None:
         for name in ("model_weights", "tracker_config", "device"):
             _nonempty(getattr(self, name), name)
+        if type(self.deduplicate_crossings) is not bool:
+            raise ValueError("deduplicate_crossings harus boolean.")
+        if self.truck_review_weights is not None:
+            _nonempty(self.truck_review_weights, "truck_review_weights")
+        if self.detection_roi is not None:
+            roi = tuple(self.detection_roi)
+            if len(roi) != 4:
+                raise ValueError("detection_roi memerlukan empat koordinat [x1, y1, x2, y2].")
+            for value in roi:
+                _finite(value, "detection_roi", 0)
+            if not (roi[0] < roi[2] <= 1 and roi[1] < roi[3] <= 1):
+                raise ValueError("detection_roi harus terurut dan berada pada rentang [0, 1].")
+            object.__setattr__(self, "detection_roi", roi)
         _integer(self.imgsz, "imgsz", 1)
         _integer(self.min_track_hits, "min_track_hits", 1)
         _finite(self.detector_conf, "detector_conf", 0)

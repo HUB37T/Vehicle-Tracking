@@ -1,0 +1,6 @@
+clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes
+holdout-istanbul-stabilized,I01,100,3.336667,truck,B_TO_A,Truk boks putih pada lajur kanan dari dua lajur uji
+holdout-istanbul-stabilized,I02,132,4.404400,car,B_TO_A,Minivan perak sesudah truk boks
+holdout-istanbul-stabilized,I03,180,6.006000,car,B_TO_A,Van gelap tinggi pada lajur kiri dari dua lajur uji
+holdout-istanbul-stabilized,I04,194,6.473133,car,B_TO_A,Taksi kuning sesudah minivan perak
+holdout-istanbul-stabilized,I05,213,7.107100,car,B_TO_A,Mobil gelap kecil sesudah van gelap tinggi

@@ -1,0 +1,8 @@
+clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes
+holdout-hvsd-rain,R01,9,0.300000,car,B_TO_A,Mobil perak
+holdout-hvsd-rain,R02,50,1.666667,car,B_TO_A,Sedan putih
+holdout-hvsd-rain,R03,59,1.966667,car,B_TO_A,SUV hitam di lajur dekat kamera
+holdout-hvsd-rain,R04,81,2.700000,car,B_TO_A,Sedan gelap dengan lampu belakang merah
+holdout-hvsd-rain,R05,117,3.900000,car,B_TO_A,Pikap ringan gelap
+holdout-hvsd-rain,R06,182,6.066667,car,B_TO_A,Van putih
+holdout-hvsd-rain,R07,183,6.100000,truck,A_TO_B,Truk boks putih pada jalur seberang

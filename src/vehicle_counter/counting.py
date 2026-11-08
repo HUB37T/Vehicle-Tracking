@@ -1,7 +1,10 @@
 """One-line, two-direction crossing counter independent of detector and UI."""
 
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field, replace
+
+import numpy as np
+from numpy.typing import NDArray
 
 from vehicle_counter.contracts import (
     DIRECTIONS,
@@ -13,7 +16,10 @@ from vehicle_counter.contracts import (
     TrackObservation,
     _nonempty,
 )
+from vehicle_counter.crossing_duplicates import CrossingDuplicates
 from vehicle_counter.geometry import PixelCountingLine
+
+TruckReview = Callable[[NDArray[np.uint8], TrackObservation], bool]
 
 
 @dataclass(slots=True)
@@ -52,6 +58,7 @@ class VehicleCounter:
         self.run_id = run_id
         self.config = config
         self.line = PixelCountingLine.from_config(config.counting_line, width=width, height=height)
+        self._duplicates = CrossingDuplicates(self.line) if config.deduplicate_crossings else None
         self._tracks: dict[int, _TrackState] = {}
         self._counted: set[int] = set()
         self._events: list[CountEvent] = []
@@ -69,7 +76,13 @@ class VehicleCounter:
             by_class_direction={name: dict(values) for name, values in self._counts.items()},
         )
 
-    def update(self, observations_for_frame: Iterable[TrackObservation]) -> list[CountEvent]:
+    def update(
+        self,
+        observations_for_frame: Iterable[TrackObservation],
+        *,
+        frame_bgr: NDArray[np.uint8] | None = None,
+        review_truck: TruckReview | None = None,
+    ) -> list[CountEvent]:
         observations = list(observations_for_frame)
         if not observations:
             return []
@@ -77,6 +90,9 @@ class VehicleCounter:
         first = observations[0]
         self._last_frame = first.frame_index
         self._last_timestamp = first.timestamp_seconds
+        if self._duplicates is not None:
+            for observation in observations:
+                self._duplicates.observe_counted(observation)
         new_events = []
         for observation in observations:
             if observation.class_name not in self.config.vehicle_classes:
@@ -85,8 +101,21 @@ class VehicleCounter:
                 continue
             event = self._observe(observation)
             if event is not None:
-                self._events.append(event)
                 self._counted.add(event.track_id)
+                if (
+                    self._duplicates is not None
+                    and frame_bgr is not None
+                    and self._duplicates.suppress(event, observation, frame_bgr)
+                ):
+                    continue
+                if (
+                    event.class_name == "truck"
+                    and frame_bgr is not None
+                    and review_truck is not None
+                    and review_truck(frame_bgr, observation)
+                ):
+                    event = replace(event, class_name="car")
+                self._events.append(event)
                 self._counts[event.class_name][event.direction] += 1
                 new_events.append(event)
         return new_events

@@ -35,6 +35,7 @@ def main() -> None:
     analyze.add_argument("--output-root", type=Path, default=Path("outputs"))
     analyze.add_argument("--device", help="Ganti device pada konfigurasi, misalnya cpu atau 0.")
     analyze.add_argument("--weights", help="Ganti path bobot lokal pada konfigurasi.")
+    analyze.add_argument("--tracker-config", help="Ganti nama atau path YAML tracker.")
     analyze.add_argument("--preprocess", choices=PREPROCESS_MODES, help="Ganti mode prapemrosesan.")
     args = parser.parse_args()
     try:
@@ -75,6 +76,8 @@ def main() -> None:
                 config = replace(config, device=args.device)
             if args.weights:
                 config = replace(config, model_weights=args.weights)
+            if args.tracker_config:
+                config = replace(config, tracker_config=args.tracker_config)
             if args.preprocess:
                 config = replace(
                     config, preprocess=replace(config.preprocess, mode=args.preprocess)

@@ -1,0 +1,5 @@
+clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes
+vehicles-3-bytetrack-test,J01,20,0.834167,car,B_TO_A,SUV hitam paling depan
+vehicles-3-bytetrack-test,J02,260,10.844167,car,B_TO_A,Van putih dengan rak atap
+vehicles-3-bytetrack-test,J03,365,15.223542,car,B_TO_A,SUV biru gelap di lajur dekat kamera
+vehicles-3-bytetrack-test,J04,626,26.109417,car,B_TO_A,Sedan putih di lajur dekat kamera

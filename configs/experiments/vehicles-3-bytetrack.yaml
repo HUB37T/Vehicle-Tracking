@@ -1,0 +1,7 @@
+preprocess:
+  mode: clahe
+counting_line:
+  line_id: main
+  p1: [0.25, 0.51]
+  p2: [0.25, 0.93]
+  epsilon_height_fraction: 0.01

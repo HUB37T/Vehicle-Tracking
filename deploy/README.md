@@ -4,7 +4,9 @@ Image CPU menyiapkan Python, OpenCV, PyTorch, dan Streamlit di dalam kontainer. 
 
 Image demo memakai NumPy 2.2.6, OpenCV 4.12.0.88, dan runtime kompatibilitas Polars untuk CPU VM yang belum mendukung x86-64-v2. PyTorch memakai jalur CPU generik saat NNPACK tidak tersedia.
 
-Dari checkout GitHub pada VM, siapkan bobot resmi `models/yolo11n.pt`, direktori `data/videos` untuk contoh opsional, dan `outputs` yang bisa ditulis UID 1000. Jalankan:
+Dari checkout GitHub pada VM, siapkan bobot resmi `models/yolo11n.pt`, direktori `data/videos` untuk contoh opsional, dan `outputs` yang bisa ditulis UID 1000.
+
+Untuk menampilkan profil **Pemulihan crossing**, siapkan `models/mobilenet_v3_large-5c1a4163.pth` dan salah satu klip `holdout-hvsd-rain.mp4` atau `holdout-istanbul-stabilized.mp4` di `data/videos`. Verifikasi checksum klip terhadap JSON anotasi dan gunakan [petunjuk bobot](../docs/bytetrack-fuse-score-evaluation.md#uji-lanjutan-dengan-fuse_score-true). Di UI, **Baseline** dan **Pemulihan crossing** memakai garis dan CLAHE yang sama untuk klip tersebut. Pilih **Kustom** untuk mengatur garis sendiri.
 
 ```sh
 docker build -f deploy/Dockerfile -t vehicle-tracking:demo .

@@ -1,0 +1,28 @@
+{
+  "clip_id": "vehicles-3-bytetrack-test",
+  "source_url": null,
+  "source_sha256": "70e2360d3697a93086c487df3677f2dba6ba014651fcf14dcba3a28dddbf7e96",
+  "parent_source_name": "vehicles-3.mp4",
+  "parent_source_sha256": "d9c084f2a4197b58795995b1f9f1dec029fe69239134647eff62dc10f867cf58",
+  "video_metadata": {
+    "source_name": "vehicles-3-bytetrack-test.mp4",
+    "width": 1280,
+    "height": 720,
+    "source_fps": 23.976023976023978,
+    "frame_count": 1152,
+    "duration_seconds": 48.048
+  },
+  "counting_line": {
+    "line_id": "main",
+    "p1": [0.25, 0.51],
+    "p2": [0.25, 0.93],
+    "epsilon_height_fraction": 0.01
+  },
+  "scope": "1152 frame awal antrean lalu lintas saat senja. Segmen vertikal meliputi jalur di sisi kamera. Gerak kiri ke kanan adalah B_TO_A.",
+  "review_status": "preliminary_single_visual_review",
+  "method": "Tinjau frame sumber sebelum melihat event model. Estimasikan frame pertama titik tengah bawah masuk sisi stabil A.",
+  "notes": [
+    "CSV hanya memuat crossing yang bisa diperiksa dari frame sumber. Pengangkut mobil, minivan putih, dan SUV gelap di lajur belakang tertutup kendaraan lain saat mendekati garis. Kasus itu ditinjau terpisah dari hitungan manual.",
+    "J02 memakai kelas car untuk van ringan. URL asal berkas lokal belum terverifikasi."
+  ]
+}
