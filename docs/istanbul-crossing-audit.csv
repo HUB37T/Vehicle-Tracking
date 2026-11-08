@@ -1,0 +1,23 @@
+tracker,run_id,track_id,frame_index,manual_event_id,review_status,notes
+ByteTrack,20261108T144308Z-9eb243558308,7,77,,ambiguous_occlusion,Van panel putih tertutup kendaraan gelap; anchor bukan titik bawah yang terlihat jelas
+ByteTrack,20261108T144308Z-9eb243558308,20,93,I01,verified,Truk boks putih di lajur kanan
+ByteTrack,20261108T144308Z-9eb243558308,8,118,I02,verified,Minivan perak sesudah truk boks
+ByteTrack,20261108T144308Z-9eb243558308,119,151,,possible_duplicate,Kotak mencakup pasangan kuning dan putih yang juga muncul pada event frame 180
+ByteTrack,20261108T144308Z-9eb243558308,12,170,I03,verified,Van gelap di lajur kiri; pasangan temporal frame 180 berasal dari lajur lain
+ByteTrack,20261108T144308Z-9eb243558308,166,180,,possible_duplicate,Kotak gabungan pasangan kuning dan putih; identitas tunggal belum dapat dipastikan
+ByteTrack,20261108T144308Z-9eb243558308,18,193,,wrong_temporal_match,Kendaraan putih di belakang taksi; bukan taksi I04
+ByteTrack,20261108T144308Z-9eb243558308,4,210,I05,verified,Mobil gelap kecil di lajur kiri
+ByteTrack,20261108T144308Z-9eb243558308,47,304,,ambiguous_occlusion,Van putih di depan minibus gelap; titik bawah tertutup
+ByteTrack,20261108T144308Z-9eb243558308,189,334,,ambiguous_occlusion,Kendaraan putih di belakang taksi; titik bawah tertutup
+DeepSORT,20261108T144327Z-29410d2fe422,7,76,,ambiguous_occlusion,Van panel putih tertutup kendaraan gelap
+DeepSORT,20261108T144327Z-29410d2fe422,130,82,,possible_duplicate,Kotak pendek di area kendaraan gelap dan van panel yang sama dengan event awal
+DeepSORT,20261108T144327Z-29410d2fe422,20,93,I01,verified,Truk boks putih di lajur kanan
+DeepSORT,20261108T144327Z-29410d2fe422,45,103,,possible_duplicate,Kotak kendaraan gelap dan kendaraan di depannya saling menutupi; tidak menambah pasangan terverifikasi
+DeepSORT,20261108T144327Z-29410d2fe422,8,118,I02,verified,Minivan perak sesudah truk boks
+DeepSORT,20261108T144327Z-29410d2fe422,2,145,,ambiguous_occlusion,Kotak pendek pada area pasangan kuning dan putih; belum menjadi event taksi terverifikasi
+DeepSORT,20261108T144327Z-29410d2fe422,12,170,I03,verified,Van gelap di lajur kiri
+DeepSORT,20261108T144327Z-29410d2fe422,18,193,,wrong_temporal_match,Kendaraan putih di belakang taksi; bukan taksi I04
+DeepSORT,20261108T144327Z-29410d2fe422,4,210,I05,verified,Mobil gelap kecil di lajur kiri
+DeepSORT,20261108T144327Z-29410d2fe422,268,262,,suspected_id_switch,Anchor event y265.6 jauh di atas garis y330; asosiasi berganti objek diduga menghasilkan lintasan semu
+DeepSORT,20261108T144327Z-29410d2fe422,265,304,,ambiguous_occlusion,Van putih di depan minibus gelap; titik bawah tertutup
+DeepSORT,20261108T144327Z-29410d2fe422,97,334,,ambiguous_occlusion,Kendaraan putih di belakang taksi; titik bawah tertutup

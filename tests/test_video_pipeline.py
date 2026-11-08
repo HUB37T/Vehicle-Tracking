@@ -106,6 +106,11 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
     assert events[0]["timestamp_seconds"] == "0.8"
     assert len(counts) == 8
     assert sum(int(row["count"]) for row in counts) == len(events)
+    with Path(result.artifact_paths["crossing_audit"]).open(encoding="utf-8") as handle:
+        audit = list(csv.DictReader(handle))
+    assert len(audit) == len(events) == manifest["crossing_audit"]["events"]
+    assert audit[0]["track_id"] == events[0]["track_id"]
+    assert audit[0]["review_reason"] == "detections_unavailable"
     verify_output_video(
         Path(result.artifact_paths["annotated_video"]), inspect_video(synthetic_video), 12
     )
@@ -136,6 +141,8 @@ def test_zero_detections_still_exports_valid_empty_events(synthetic_video, tmp_p
         rows = list(csv.DictReader(handle))
     assert len(rows) == 8
     assert all(row["count"] == "0" for row in rows)
+    with Path(result.artifact_paths["crossing_audit"]).open(encoding="utf-8") as handle:
+        assert list(csv.DictReader(handle)) == []
 
 
 def test_inference_failure_marks_run_failed_and_preserves_partial_counts(synthetic_video, tmp_path):

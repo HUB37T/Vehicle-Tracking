@@ -1,4 +1,4 @@
-"""YOLO detection followed by explicit ByteTrack association, once per frame."""
+"""YOLO detection and explicitly selected association, once per frame."""
 
 from __future__ import annotations
 
@@ -109,8 +109,35 @@ def load_tracker_settings(value: str) -> tuple[Path, dict[str, Any]]:
             raise FileNotFoundError(f"Konfigurasi tracker tidak ditemukan: {value}")
         path = Path(ultralytics.__file__).parent / "cfg" / "trackers" / value
     settings = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(settings, dict) or settings.get("tracker_type") != "bytetrack":
-        raise ValueError("Baseline ini memerlukan konfigurasi tracker_type: bytetrack.")
+    if not isinstance(settings, dict) or settings.get("tracker_type") not in (
+        "bytetrack",
+        "deepsort",
+    ):
+        raise ValueError("tracker_type harus bytetrack atau deepsort.")
+    if settings["tracker_type"] == "deepsort":
+        required = {
+            "tracker_type",
+            "max_age",
+            "n_init",
+            "max_cosine_distance",
+            "max_iou_distance",
+            "nn_budget",
+        }
+        if set(settings) != required:
+            raise ValueError("Field konfigurasi DeepSORT tidak lengkap atau tidak dikenal.")
+        for key in ("max_age", "n_init", "nn_budget"):
+            if type(settings[key]) is not int or settings[key] < 1:
+                raise ValueError(f"{key} harus bilangan bulat positif.")
+        for key in ("max_cosine_distance", "max_iou_distance"):
+            number = settings[key]
+            if (
+                isinstance(number, bool)
+                or not isinstance(number, (int, float))
+                or not np.isfinite(number)
+                or not 0 < number <= 1
+            ):
+                raise ValueError(f"{key} harus berada pada rentang (0, 1].")
+        return path.resolve(), settings
     required = {
         "track_high_thresh",
         "track_low_thresh",
@@ -149,7 +176,7 @@ def observations_from_tracks(
     for row in rows:
         if len(row) != 8 or not np.isfinite(row).all():
             raise ValueError(
-                "Format keluaran ByteTrack harus [xyxy, id, score, class, detection_idx]."
+                "Format keluaran tracker harus [xyxy, id, score, class, detection_idx]."
             )
         track_id, detection_index = int(row[4]), int(row[7])
         if (
@@ -157,7 +184,7 @@ def observations_from_tracks(
             or detection_index != row[7]
             or not 0 <= detection_index < len(detections)
         ):
-            raise ValueError("ByteTrack mengembalikan ID atau indeks deteksi yang tidak valid.")
+            raise ValueError("Tracker mengembalikan ID atau indeks deteksi yang tidak valid.")
         class_id = int(detections.cls[detection_index])
         if class_id not in class_names:
             raise ValueError(f"Kelas deteksi {class_id} tidak dikenal model.")
@@ -174,8 +201,8 @@ def observations_from_tracks(
     return observations
 
 
-class YoloByteTracker:
-    """Own a fresh detector and ByteTrack instance for exactly one sequential run."""
+class YoloTracker:
+    """Own a fresh detector and association instance for one sequential run."""
 
     def __init__(self, config: RunConfig, video: VideoMetadata) -> None:
         from ultralytics import YOLO
@@ -210,19 +237,28 @@ class YoloByteTracker:
         if missing := set(config.vehicle_classes) - inverse.keys():
             raise ValueError(f"Kelas kendaraan tidak tersedia pada model: {sorted(missing)}")
         self._class_ids = [inverse[name] for name in config.vehicle_classes]
-        self._tracker = BYTETracker(args=SimpleNamespace(**settings))
+        if settings["tracker_type"] == "bytetrack":
+            self._tracker = BYTETracker(args=SimpleNamespace(**settings))
+        else:
+            from vehicle_counter.deepsort import DeepSortAssociation
+
+            self._tracker = DeepSortAssociation(settings)
         self._config = config
         self._video = video
         self._next_frame = 0
         self.last_detections: tuple[VehicleDetection, ...] = ()
         self.warnings = []
-        if config.detector_conf > settings["track_low_thresh"]:
+        if (
+            settings["tracker_type"] == "bytetrack"
+            and config.detector_conf > settings["track_low_thresh"]
+        ):
             self.warnings.append(
                 "detector_conf melebihi track_low_thresh; sebagian kandidat confidence rendah "
                 "tidak mencapai asosiasi ByteTrack."
             )
         self.metadata = {
-            "kind": "yolo-bytetrack",
+            "kind": f"yolo-{settings['tracker_type']}",
+            "tracker_name": "DeepSORT" if settings["tracker_type"] == "deepsort" else "ByteTrack",
             "is_model_inference": True,
             "weights_path": str(weights),
             "weights_sha256": file_sha256(weights),
@@ -235,6 +271,8 @@ class YoloByteTracker:
         }
         if self.detection_roi_pixels is not None:
             self.metadata["detection_roi_pixels"] = self.detection_roi_pixels
+        if settings["tracker_type"] == "deepsort":
+            self.metadata["appearance"] = self._tracker.metadata
         provenance = weights.with_suffix(".pt.source.json")
         if provenance.is_file():
             self.metadata["weights_provenance"] = json.loads(provenance.read_text(encoding="utf-8"))
@@ -290,3 +328,7 @@ class YoloByteTracker:
         )
         self._next_frame += 1
         return observations
+
+
+# Retain the original import used by integration callers.
+YoloByteTracker = YoloTracker

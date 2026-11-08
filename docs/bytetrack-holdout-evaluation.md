@@ -1,5 +1,7 @@
 # Uji profil ByteTrack pada rekaman baru
 
+Lanjutan: [audit per event Istanbul, DeepSORT, dan regresi lima klip](tracker-safety-evaluation.md). ByteTrack dengan `fuse_score: true` tetap pilihan utama setelah perbandingan tersebut.
+
 Garis, kelas, dan perkiraan frame crossing ditulis dari video sumber sebelum kedua run. Hash CSV dan JSON dibekukan di `outputs/holdout/<clip_id>/annotation-lock.json` dan diperiksa lagi saat evaluasi. Satu peninjau mengerjakan anotasi. Perubahan profil dan ambang dihentikan sebelum uji ini. SUV, van ringan, dan pikap ringan masuk `car`. Truk boks masuk `truck`.
 
 | Klip | Kondisi | Lingkup manual |

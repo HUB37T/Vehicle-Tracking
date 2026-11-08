@@ -14,10 +14,11 @@ from uuid import uuid4
 from vehicle_counter.config import config_to_dict
 from vehicle_counter.contracts import ProgressUpdate, RunConfig, RunResult, VideoMetadata
 from vehicle_counter.counting import VehicleCounter
+from vehicle_counter.crossing_audit import audit_crossings, write_crossing_audit
 from vehicle_counter.exporting import export_counts, file_sha256, write_json
 from vehicle_counter.preprocessing import preprocess_frame
 from vehicle_counter.run_evidence import render_evidence, write_evidence
-from vehicle_counter.tracking import FrameTracker, YoloByteTracker
+from vehicle_counter.tracking import FrameTracker, YoloTracker
 from vehicle_counter.truck_review import TruckCropReviewer
 from vehicle_counter.video import AnnotatedVideoWriter, VideoReader, verify_output_video
 from vehicle_counter.visualization import FrameAnnotator
@@ -39,6 +40,8 @@ def _versions() -> dict[str, str | None]:
         "torchvision",
         "lap",
         "imageio-ffmpeg",
+        "deep-sort-realtime",
+        "scipy",
     ):
         try:
             result[package] = version(package)
@@ -106,12 +109,13 @@ def process_video(
         processed = 0
         processing_start = None
         last_preview = None
+        audit_rows = []
         evidence = None
         evidence_priority = -1
         try:
             manifest["source"]["sha256"] = file_sha256(reader.path)
             model_start = perf_counter()
-            tracker = (tracker_factory or YoloByteTracker)(config, metadata)
+            tracker = (tracker_factory or YoloTracker)(config, metadata)
             review_truck = (
                 TruckCropReviewer(config.truck_review_weights)
                 if config.truck_review_weights
@@ -146,6 +150,8 @@ def process_video(
                     events = counter.update(
                         observations, frame_bgr=frame, review_truck=review_truck
                     )
+                    detections = getattr(tracker, "last_detections", None)
+                    audit_rows.extend(audit_crossings(events, observations, detections))
                     annotated = annotator.render(
                         frame,
                         observations,
@@ -174,6 +180,7 @@ def process_video(
                                 frame_index=frame_index,
                                 timestamp_seconds=timestamp,
                                 detection_roi_pixels=getattr(tracker, "detection_roi_pixels", None),
+                                tracker_name=tracker.metadata.get("tracker_name", "ByteTrack"),
                             )
                             evidence_priority = priority
                             manifest["process_evidence"] = {
@@ -199,6 +206,16 @@ def process_video(
                         )
             verify_output_video(video_path, metadata, processed)
             artifacts["annotated_video"] = str(video_path)
+            audit_path = output_dir / "crossing_audit.csv"
+            write_crossing_audit(audit_path, audit_rows)
+            artifacts["crossing_audit"] = str(audit_path)
+            manifest["crossing_audit"] = {
+                "events": len(audit_rows),
+                "flagged_events": sum(bool(row["review_reason"]) for row in audit_rows),
+                "interpretation": (
+                    "Review candidates only; absence of flags does not verify identity."
+                ),
+            }
             artifacts.update(
                 export_counts(
                     output_dir,

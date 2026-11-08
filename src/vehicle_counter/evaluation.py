@@ -130,6 +130,12 @@ def evaluate_events(manual: list[Event], predicted: list[Event], tolerance: floa
     tp, fp, fn = len(matched), len(extras), len(misses)
     errors = sum(bucket["absolute_error"] for bucket in buckets)
     return {
+        "matching_basis": "class_direction_time",
+        "identity_verified": False,
+        "review_note": (
+            "Pasangan otomatis hanya memakai kelas, arah, dan waktu. "
+            "Periksa identitas pada video, terutama saat kendaraan rapat atau tertutup."
+        ),
         "manual_total": len(manual),
         "predicted_total": len(predicted),
         "absolute_total_error": abs(len(predicted) - len(manual)),

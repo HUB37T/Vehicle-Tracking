@@ -1,0 +1,6 @@
+tracker_type: deepsort
+max_age: 30
+n_init: 3
+max_cosine_distance: 0.20
+max_iou_distance: 0.70
+nn_budget: 100

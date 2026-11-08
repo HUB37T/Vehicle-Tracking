@@ -6,7 +6,7 @@ Pengguna mengunggah rekaman jalan dari kamera diam, mengatur garis virtual, lalu
 
 ## Status proyek
 
-CLI video mendukung YOLO11n pretrained, ByteTrack, penghitung dua arah, lima mode prapemrosesan, ekspor CSV/JSON, dan MP4 beranotasi. CLI juga menyediakan praktikum pengolahan citra klasik dari dua frame. Integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
+CLI video mendukung YOLO11n pretrained, ByteTrack, DeepSORT opsional, penghitung dua arah, lima mode prapemrosesan, ekspor CSV/JSON, dan MP4 beranotasi. CLI juga menyediakan praktikum pengolahan citra klasik dari dua frame. Integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
 
 Analisis bisa dijalankan lewat CLI atau antarmuka lokal Streamlit. Evaluasi awal terhadap anotasi manual tersedia untuk dua klip jalan. Lihat [hasil evaluasi awal](docs/counting-evaluation.md).
 
@@ -71,11 +71,13 @@ Ganti `jalan.mp4` dengan nama rekamanmu. Atur koordinat garis ternormalisasi P1/
 
 Masukan baseline adalah MP4 lokal CFR dengan dimensi genap untuk ekspor H.264/yuv420p. Metadata dan frame awal divalidasi; VFR harus dikonversi terlebih dahulu. Pipeline mendeteksi ketidaksesuaian jumlah frame jika metadata menyediakannya. Jika jumlah frame tidak diketahui, keterbatasan verifikasi akhir sumber dicatat sebagai peringatan.
 
-Folder `outputs/<run_id>/` berisi `events.csv`, `counts.csv`, `run.json`, `annotated.mp4`, dan `process_evidence.png`. Audio sumber tidak disertakan. Run diberi status `completed` setelah output video berhasil didekode seluruhnya dan hitungan cocok dengan event log. Kegagalan sesudah run dibuat menghasilkan metadata `failed`, penjelasan error, dan hitungan parsial. CLI mengembalikan kode keluar bukan nol.
+Folder `outputs/<run_id>/` berisi `events.csv`, `counts.csv`, `crossing_audit.csv`, `run.json`, `annotated.mp4`, dan `process_evidence.png`. Audio sumber tidak disertakan. Run diberi status `completed` setelah output video berhasil didekode seluruhnya dan hitungan cocok dengan event log. Kegagalan sesudah run dibuat menghasilkan metadata `failed`, penjelasan error, dan hitungan parsial. CLI mengembalikan kode keluar bukan nol.
 
 `process_evidence.png` memperlihatkan satu frame yang sama pada enam panel. Urutannya adalah frame sumber, kanal L setelah konversi BGR ke Lab, kanal L setelah CLAHE, masukan aktual detektor, deteksi YOLO dengan confidence, dan track ByteTrack dengan ID serta jejak. Panel CLAHE menandai status tidak aktif pada mode lain. Bukti memakai crossing pertama jika ada, dengan frame lain yang menampilkan deteksi atau track sebagai cadangan. `run.json` mencatat indeks, waktu, dan alasan pemilihan frame.
 
-Setiap run membuat detector/tracker dan counter baru. Setiap frame menjalankan satu inferensi deteksi, lalu asosiasi ByteTrack eksplisit; anchor counting berasal dari kotak deteksi yang cocok dengan ID pada frame tersebut. Konfigurasi tracker aktual, bobot/checksum, perangkat, versi, dan waktu pemrosesan dicatat di `run.json`.
+Setiap run membuat detector/tracker dan counter baru. Setiap frame menjalankan satu inferensi deteksi, lalu asosiasi tracker yang dipilih; anchor counting berasal dari kotak deteksi yang cocok dengan ID pada frame tersebut. Konfigurasi tracker aktual, bobot/checksum, perangkat, versi, dan waktu pemrosesan dicatat di `run.json`. Panel keenam menampilkan nama tracker aktual, ByteTrack atau DeepSORT.
+
+`crossing_audit.csv` menambah koordinat box, anchor, dan tanda tumpang tindih untuk setiap event yang diterima counter. Tab **Audit crossing** menampilkan tabel serta frame video hasil untuk ID yang dipilih. Tanda `anchor_inside_other_detection` menunjukkan kandidat oklusi untuk ditinjau, bukan vonis event salah. Event tanpa tanda juga belum terverifikasi benar. Kontrak tujuh kolom `events.csv` tetap sama.
 
 ## Praktikum pengolahan citra
 
@@ -112,9 +114,22 @@ Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hi
 
 `vehicle-counter evaluate` menerima satu CSV anotasi, satu JSON pendamping dengan nama yang sama, dan folder hasil run. Evaluator memeriksa checksum video serta garis sebelum mencocokkan event. Contoh perintah, metrik, dan catatan kedua klip ada di [laporan evaluasi](docs/counting-evaluation.md).
 
+Pencocokan otomatis memakai kelas, arah, dan waktu, sehingga dua kendaraan berbeda yang lewat berdekatan bisa tertukar pasangan. Laporan sekarang menyatakan `identity_verified: false`; periksa frame sumber dan audit identitas sebelum menyebut crossing pulih. Lihat [audit Istanbul dan perbandingan tracker](docs/tracker-safety-evaluation.md).
+
 Untuk memilih profil tracker pada satu run CLI, gunakan `--tracker-config configs/bytetrack-no-fuse.yaml`. Profil ini memakai `fuse_score: false` dan disediakan untuk eksperimen terhadap baseline. Lihat [hasil dan cara mengulang eksperimen ByteTrack](docs/bytetrack-fuse-score-evaluation.md).
 
 Profil `configs/experiments/vehicles-3-refined.yaml` menguji pemeriksaan kelas SUV/van dan penolakan crossing ganda dengan `fuse_score: true`. [Petunjuk bobot, perintah, dan hasil perbandingan](docs/bytetrack-fuse-score-evaluation.md#uji-lanjutan-dengan-fuse_score-true) tersedia dalam laporan.
+
+## Mencoba DeepSORT
+
+ByteTrack dengan `fuse_score: true` tetap pilihan utama. DeepSORT adalah metode berbeda untuk eksperimen materi tracking; parameter `fuse_score` tidak berlaku padanya. Pasang setelah dependensi tracking dan PyTorch CPU tersedia:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[deepsort]" -c constraints.txt
+.\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/holdout-hvsd-rain.mp4 --config configs/experiments/hvsd-rain-recovery.yaml --tracker-config configs/deepsort.yaml
+```
+
+Di Streamlit, pilih **DeepSORT (eksperimen)** pada pilihan tracker. Tombol analisis dinonaktifkan bila paket opsional belum tersedia. `deep-sort-realtime==1.3.2` memakai MobileNetV2 pretrained ImageNet yang dibundel dalam paket untuk fitur tampilan pada CPU; bobot dan checksum dicatat di metadata. Ini belum merupakan model ReID yang dilatih khusus kendaraan. Analisis hanya meneruskan track terkonfirmasi dengan deteksi aktual pada frame itu; posisi prediksi Kalman saat deteksi hilang tidak menghasilkan crossing. DeepSORT lebih lambat dan menambah hitungan ganda pada klip hujan dalam [uji aktual](docs/tracker-safety-evaluation.md), sehingga belum direkomendasikan menggantikan ByteTrack. Paket lama ini masih memakai `pkg_resources`, sehingga ekstra mengunci `setuptools<81`.
 
 ## Mencoba tanpa video
 
@@ -154,7 +169,9 @@ src/vehicle_counter/counting.py  Event crossing dan ringkasan hitungan
 src/vehicle_counter/preprocessing.py  None, CLAHE, gamma, Gaussian, dan unsharp
 src/vehicle_counter/pcd_lab.py         Panel materi pengolahan citra klasik
 src/vehicle_counter/simulation.py     Contoh observasi sintetis dan CLI
-src/vehicle_counter/tracking.py       Adapter YOLO + ByteTrack per run
+src/vehicle_counter/tracking.py       Adapter YOLO + pilihan tracker per run
+src/vehicle_counter/deepsort.py       Asosiasi DeepSORT opsional
+src/vehicle_counter/crossing_audit.py  Bukti posisi crossing untuk tinjauan visual
 src/vehicle_counter/video.py          Reader MP4 dan writer H.264 streaming
 src/vehicle_counter/pipeline.py       Orkestrasi analisis dan lifecycle run
 src/vehicle_counter/visualization.py  Anotasi frame sumber dan lintasan pendek

@@ -12,6 +12,8 @@ def test_matching_maximizes_pairs_before_choosing_closest_times():
     assert (result["tp"], result["fp"], result["fn"]) == (2, 1, 0)
     assert [row["predicted"]["event_id"] for row in result["matches"]] == ["1", "2"]
     assert result["extra_events"][0]["event_id"] == "3"
+    assert result["matching_basis"] == "class_direction_time"
+    assert result["identity_verified"] is False
 
 
 def test_matching_uses_closest_time_when_pair_count_ties():

@@ -31,6 +31,7 @@ def render_evidence(
     frame_index: int,
     timestamp_seconds: float,
     detection_roi_pixels: tuple[int, int, int, int] | None = None,
+    tracker_name: str = "ByteTrack",
 ) -> NDArray[np.uint8]:
     source_height, source_width = source.shape[:2]
     width, height = 520, 292
@@ -121,7 +122,7 @@ def render_evidence(
             detection_panel,
         ),
         (
-            "06  Tracking ByteTrack" if detections is not None else "06  Tracker uji",
+            f"06  Tracking {tracker_name}" if detections is not None else "06  Tracker uji",
             f"{len(observations)} track | ID, jejak, dan garis hitung",
             tracking_panel,
         ),

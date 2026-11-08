@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from importlib.util import find_spec
 from math import hypot
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -82,6 +83,19 @@ def _line_preview(frame, config):
     return image
 
 
+@st.cache_data(max_entries=24, show_spinner=False)
+def _audit_frame(filename: str, frame_index: int):
+    capture = cv2.VideoCapture(filename)
+    try:
+        capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ok, frame = capture.read()
+        if not ok:
+            raise ValueError("Frame crossing tidak dapat dibaca dari video hasil.")
+        return frame
+    finally:
+        capture.release()
+
+
 def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -> None:
     st.header("Hasil analisis")
     st.caption(f"{source_name} · {profile} · {MODES[mode]} · Run {result.run_id}")
@@ -90,6 +104,16 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         for warning in result.warnings:
             st.write(warning)
         return
+
+    audit_rows = None
+    if path := result.artifact_paths.get("crossing_audit"):
+        audit_rows = pd.read_csv(path).fillna("")
+        flagged = audit_rows["review_reason"].ne("").sum()
+        if flagged:
+            st.warning(
+                f"{flagged} event perlu ditinjau. Buka Audit crossing untuk memeriksa frame; "
+                "tanda ini belum membuktikan event salah."
+            )
 
     directions = [
         sum(counts[direction] for counts in result.summary.by_class_direction.values())
@@ -102,7 +126,9 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         strict=True,
     ):
         column.metric(label, value)
-    table, video, evidence, exports = st.tabs(("Rekap", "Video", "Bukti materi", "Unduhan"))
+    table, video, evidence, audit, exports = st.tabs(
+        ("Rekap", "Video", "Bukti materi", "Audit crossing", "Unduhan")
+    )
     with table:
         rows = [
             {"Kendaraan": CLASSES[name], "A → B": counts["A_TO_B"], "B → A": counts["B_TO_A"]}
@@ -116,13 +142,44 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         st.caption("Video beranotasi disimpan tanpa audio sumber.")
     with evidence:
         if path := result.artifact_paths.get("process_evidence"):
-            st.image(path, caption="Ruang warna, CLAHE, YOLO, dan ByteTrack", width="stretch")
+            st.image(path, caption="Ruang warna, CLAHE, YOLO, dan tracker run ini", width="stretch")
         else:
             st.info("Run ini dibuat sebelum panel bukti proses tersedia.")
+    with audit:
+        st.caption(
+            "Hitungan berasal dari event tracker. Kotak yang bertumpuk perlu diperiksa pada "
+            "video; event tanpa tanda juga belum membuktikan identitas kendaraan benar."
+        )
+        if audit_rows is not None:
+            st.dataframe(audit_rows, hide_index=True)
+            if not audit_rows.empty:
+                selected = st.selectbox(
+                    "Periksa event",
+                    range(len(audit_rows)),
+                    format_func=lambda i: (
+                        f"Frame {audit_rows.iloc[i]['frame_index']} · "
+                        f"ID {audit_rows.iloc[i]['track_id']}"
+                    ),
+                )
+                row = audit_rows.iloc[selected]
+                try:
+                    st.image(
+                        _audit_frame(
+                            result.artifact_paths["annotated_video"], int(row.frame_index)
+                        ),
+                        caption=f"Frame crossing ID {row.track_id} · {row.timestamp_seconds:.3f} s",
+                        channels="BGR",
+                        width="stretch",
+                    )
+                except (ValueError, cv2.error) as error:
+                    st.error(str(error))
+        else:
+            st.info("Run ini dibuat sebelum ekspor audit crossing tersedia.")
     with exports:
         for key, label, mime in (
             ("events_csv", "Unduh daftar crossing", "text/csv"),
             ("counts_csv", "Unduh rekap hitungan", "text/csv"),
+            ("crossing_audit", "Unduh audit crossing", "text/csv"),
             ("annotated_video", "Unduh video beranotasi", "video/mp4"),
             ("process_evidence", "Unduh panel bukti", "image/png"),
             ("run_json", "Unduh metadata run", "application/json"),
@@ -139,7 +196,7 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
 def main() -> None:
     st.set_page_config(page_title="Penghitung Kendaraan", layout="wide")
     st.title("Penghitung Kendaraan")
-    st.caption("Praktikum pengolahan citra · YOLO11n dan ByteTrack")
+    st.caption("Praktikum pengolahan citra · YOLO11n · ByteTrack atau DeepSORT")
     config = load_config(ROOT / "configs" / "default.yaml")
     local_videos = {p.name: p for p in sorted((ROOT / "data" / "videos").glob("*.mp4"))}
     setup, preview = st.columns([1, 2])
@@ -152,6 +209,16 @@ def main() -> None:
             source_name = uploaded.name
         data = uploaded.getvalue() if uploaded is not None else None
         st.subheader("2. Atur analisis")
+        tracker_name = st.selectbox("Tracker", ("ByteTrack", "DeepSORT (eksperimen)"))
+        deepsort_selected = tracker_name.startswith("DeepSORT")
+        deepsort_available = find_spec("deep_sort_realtime") is not None
+        if deepsort_selected:
+            st.caption(
+                "DeepSORT memakai fitur tampilan MobileNetV2 pretrained ImageNet pada CPU. "
+                "Belum dilatih khusus identitas kendaraan dan dapat lebih lambat."
+            )
+            if not deepsort_available:
+                st.error("DeepSORT belum dipasang. Ikuti bagian DeepSORT pada README.")
         profile = "Baseline"
         use_evaluation_settings = False
         if local is not None and local.name in DEMO_EXPERIMENTS:
@@ -203,7 +270,11 @@ def main() -> None:
             except (ValueError, OSError, cv2.error) as error:
                 st.error(f"Video tidak dapat dibaca. {error}")
 
-    if setup.button("Mulai analisis", type="primary", disabled=not ready):
+    if setup.button(
+        "Mulai analisis",
+        type="primary",
+        disabled=not ready or (deepsort_selected and not deepsort_available),
+    ):
         progress = st.progress(0, text="Menyiapkan model dan video")
 
         def update(step):
@@ -219,12 +290,19 @@ def main() -> None:
                 result = process_video(
                     source,
                     replace(
-                        config, counting_line=line, preprocess=replace(config.preprocess, mode=mode)
+                        config,
+                        counting_line=line,
+                        preprocess=replace(config.preprocess, mode=mode),
+                        tracker_config=(
+                            str(ROOT / "configs" / "deepsort.yaml")
+                            if deepsort_selected
+                            else config.tracker_config
+                        ),
                     ),
                     ROOT / "outputs" / "ui",
                     update,
                 )
-            st.session_state.result = (result, source_name, mode, profile)
+            st.session_state.result = (result, source_name, mode, f"{profile} · {tracker_name}")
             if result.status == "completed":
                 progress.progress(1.0, text="Analisis selesai")
             else:

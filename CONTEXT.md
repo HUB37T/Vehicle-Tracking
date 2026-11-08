@@ -56,6 +56,9 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Count | Agregasi crossing event; berbeda dari jumlah box pada frame. |
 | Run | Satu eksekusi analisis dengan video dan konfigurasi tetap, diidentifikasi oleh `run_id`. |
 | Ground truth / GT | Anotasi manual yang menjadi pembanding hasil sistem. |
+| Pasangan otomatis | Dua event dengan kelas, arah, dan waktu yang memenuhi toleransi evaluator; identitas kendaraan belum terverifikasi. |
+| Crossing terverifikasi | Event yang identitas kendaraannya sudah dicocokkan lewat tinjauan visual dengan anotasi. |
+| Tanda audit | Kandidat masalah yang perlu ditinjau, misalnya anchor berada dalam kotak deteksi lain; tanda bukan bukti event salah dan ketiadaan tanda bukan bukti benar. |
 | Baseline | Konfigurasi pembanding awal dengan prapemrosesan `none`. |
 | Klip pengembangan | Rekaman untuk memilih parameter dan konfigurasi sebelum uji akhir. |
 | Klip uji akhir | Rekaman dengan GT manual yang dievaluasi setelah parameter dibekukan. |
@@ -118,10 +121,10 @@ Pengenalan pelat, identifikasi pemilik kendaraan, pelacakan lintas kamera, detek
 | 9–10. Tepi dan thresholding | Canny pada grayscale yang dihaluskan, serta threshold tetap dan Otsu pada selisih antarframe | Panel tepi dan mask biner |
 | 11–12. Morfologi dan CCL | Opening dan closing mask Otsu, lalu pelabelan komponen dengan konektivitas 8 | Panel mask dan kotak kandidat, luas, serta centroid pada `lab.json` |
 | 15. Optical Flow | Lucas–Kanade untuk perpindahan titik sudut antara dua frame berurutan | Panel vektor gerak pada frame target |
-| 16. Tracking objek modern | ByteTrack sebagai metode tracking yang dipilih | ID dan lintasan antarframe; analisis ID switch |
+| 16. Tracking objek modern | ByteTrack sebagai pilihan utama dan DeepSORT sebagai eksperimen opsional | ID dan lintasan antarframe; analisis ID switch dan perbandingan tracker |
 | 17–18. Deteksi deep learning dan YOLO | Detektor pretrained untuk jenis kendaraan | Box, kelas, confidence, serta penjelasan inferensi |
 
-ByteTrack adalah tambahan metode tracking modern, bukan nama lain DeepSORT. Jika dosen mensyaratkan algoritma persis dari daftar kuliah, konfirmasikan penerimaan ByteTrack atau rencanakan integrasi DeepSORT secara eksplisit.
+ByteTrack dan DeepSORT adalah dua metode berbeda. Atas izin pengguna pada 8 November 2026, DeepSORT tersedia sebagai eksperimen dengan fitur tampilan MobileNetV2 pretrained ImageNet, belum dilatih khusus identitas kendaraan. ByteTrack `fuse_score: true` tetap pilihan utama; parameter itu tidak berlaku untuk DeepSORT. Hasil eksperimen mengikuti [laporan perbandingan tracker](docs/tracker-safety-evaluation.md).
 
 `pcd-lab` membuat panel dari frame N−1 dan N. Selisih intensitas menunjukkan area perubahan, dan CCL menghasilkan kandidat area gerak yang dapat terpecah atau tergabung. Optical Flow memperkirakan perpindahan titik citra. `analyze` tetap memakai deteksi YOLO dan asosiasi ByteTrack sebagai sumber event crossing.
 
@@ -222,7 +225,7 @@ Satu adapter boleh memakai API tracking Ultralytics yang sekaligus menjalankan d
 | Data dan grafik | pandas dan grafik bawaan Streamlit | CSV dan ringkasan sederhana |
 | Pengujian | pytest | Logika geometri, state counting, dan konsistensi ekspor |
 
-Model dan tracker dipilih eksplisit, bukan mengikuti default library yang dapat berubah. DeepSORT bukan dependensi MVP. Training dari nol dan GPU bukan prasyarat.
+Model dan tracker dipilih eksplisit, bukan mengikuti default library yang dapat berubah. DeepSORT merupakan dependensi opsional melalui ekstra `deepsort` dan `configs/deepsort.yaml`, bukan dependensi wajib MVP. Training dari nol dan GPU bukan prasyarat. Kedua tracker meneruskan hanya deteksi aktual yang terasosiasi; prediksi posisi tanpa deteksi pada frame itu tidak boleh membuat event.
 
 Berikut bentuk konfigurasi bersama yang diusulkan; nilai awal adalah titik mulai eksperimen, bukan parameter optimal:
 
@@ -403,6 +406,8 @@ E_count = 100 * sum(AE_i,k,d) / sum(G_i,k,d)
 
 Untuk menilai kejadian, bukan hanya kecocokan total, cocokkan event prediksi dan manual secara satu-ke-satu per klip, kelas, dan arah, dengan selisih waktu maksimal 0,5 detik sebagai toleransi awal. Pilih pencocokan dengan jumlah pasangan maksimum, lalu jumlah selisih waktu minimum. Event berlebih menjadi FP, event manual tanpa pasangan menjadi FN. Laporkan precision, recall, dan F1 dengan penanganan denominator nol yang dijelaskan. Metrik ini membantu menemukan kasus satu event terlewat tetapi event lain terhitung ganda.
 
+Label FP/FN dari evaluator merupakan hasil pencocokan temporal, bukan audit identitas. Pada lalu lintas padat, event kendaraan lain bisa menjadi pasangan otomatis yang keliru. Metadata hasil menyatakan `matching_basis: class_direction_time` dan `identity_verified: false`. Laporkan crossing terverifikasi secara terpisah setelah melihat video sumber. `crossing_audit.csv` dan tab Audit crossing menyediakan koordinat dan frame event; tanda audit tidak mengubah event log atau hitungan. Artefak tambahan memakai kunci `crossing_audit`; kontrak `events.csv` tetap tujuh kolom. CSV audit berisi tujuh kolom event ditambah `x1,y1,x2,y2,anchor_x,anchor_y,overlapping_boxes,review_reason`. Jumlah barisnya sama dengan event pada run sukses, termasuk header tanpa baris untuk run nol crossing.
+
 mAP memerlukan anotasi bounding box; IDF1/MOTA/HOTA memerlukan anotasi tracking yang sesuai. Metrik tersebut opsional jika tim benar-benar menyediakan anotasi dan evaluatornya. Confidence bukan akurasi dan bukan pengganti evaluasi.
 
 ### 15.2 Kecepatan dan keterulangan
@@ -573,6 +578,8 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-08 | Materi tambahan | Mode gamma, Gaussian, dan unsharp tersedia di `analyze`. Thresholding, morfologi, CCL, Canny, dan Optical Flow dapat diperiksa melalui `pcd-lab`. Dampak terhadap hitungan diukur terpisah dengan GT |
 | 2026-11-08 | Bukti proses | Run sukses menyertakan panel satu frame untuk konversi warna, CLAHE, YOLO, dan ByteTrack, dengan frame serta status metode tercatat di metadata |
 | 2026-11-08 | UI dan evaluasi awal | Streamlit memakai pipeline yang sama dengan CLI. Evaluator memverifikasi video dan garis terhadap metadata anotasi. Dua klip sudah ditinjau visual awal dan menunggu validasi kedua |
+| 2026-11-08 | Eksperimen yang diizinkan pengguna | DeepSORT ditambahkan sebagai opsi pembanding. ByteTrack `fuse_score: true` tetap pilihan utama. Uji aktual dan keterbatasan dicatat di docs/tracker-safety-evaluation.md |
+| 2026-11-08 | Audit crossing | Pasangan temporal dibedakan dari identitas terverifikasi. Audit koordinat dan frame ditambahkan tanpa mengubah sumber hitungan, kontrak events.csv, atau anotasi yang sudah dibekukan |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 

@@ -76,9 +76,12 @@ def test_tracker_config_requires_bytetrack_and_valid_thresholds(tmp_path):
 
 
 @pytest.mark.parametrize("use_roi", [False, True])
-def test_real_bytetrack_association_with_fake_detector_and_fresh_run(
-    monkeypatch, tmp_path, use_roi
+@pytest.mark.parametrize("tracker_config", ["bytetrack.yaml", "configs/deepsort.yaml"])
+def test_real_association_with_fake_detector_and_fresh_run(
+    monkeypatch, tmp_path, use_roi, tracker_config
 ):
+    if "deepsort" in tracker_config:
+        pytest.importorskip("deep_sort_realtime")
     ultralytics = pytest.importorskip("ultralytics")
     from ultralytics.engine.results import Boxes
 
@@ -98,13 +101,18 @@ def test_real_bytetrack_association_with_fake_detector_and_fresh_run(
     weights = tmp_path / "fake-weights.pt"
     weights.write_bytes(b"test fixture, not model weights")
     roi = (0.08, 0.1, 0.95, 0.9) if use_roi else None
-    config = replace(RunConfig(), model_weights=str(weights), detection_roi=roi)
+    config = replace(
+        RunConfig(), model_weights=str(weights), detection_roi=roi, tracker_config=tracker_config
+    )
     metadata = VideoMetadata("synthetic.mp4", 100, 100, 10)
     first = YoloByteTracker(config, metadata)
     ids = []
-    for index in range(3):
+    for index in range(4):
         frame = np.full((100, 100, 3), index, dtype=np.uint8)
         observations = first.track_frame(frame, frame_index=index, timestamp_seconds=index / 10)
+        if "deepsort" in tracker_config and index < 2:
+            assert observations == []
+            continue
         offset_x, offset_y = (8, 10) if use_roi else (0, 0)
         assert observations[0].bbox_xyxy == (
             20 + index + offset_x,
@@ -120,8 +128,14 @@ def test_real_bytetrack_association_with_fake_detector_and_fresh_run(
     with pytest.raises(ValueError, match="berurutan"):
         first.track_frame(frame, frame_index=0, timestamp_seconds=0)
     second = YoloByteTracker(config, metadata)
-    observations = second.track_frame(np.zeros_like(frame), frame_index=0, timestamp_seconds=0)
+    for index in range(3):
+        observations = second.track_frame(
+            np.zeros_like(frame), frame_index=index, timestamp_seconds=index / 10
+        )
     assert observations[0].track_id == ids[0]
+    assert first.metadata["tracker_settings"]["tracker_type"] == (
+        "deepsort" if "deepsort" in tracker_config else "bytetrack"
+    )
 
 
 def test_empty_frames_advance_actual_bytetrack(monkeypatch, tmp_path):
