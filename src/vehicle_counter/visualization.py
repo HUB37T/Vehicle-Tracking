@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from vehicle_counter.contracts import CountSummary, TrackObservation
+from vehicle_counter.contracts import CountSummary, Point, TrackObservation
 from vehicle_counter.geometry import PixelCountingLine
 
 
@@ -17,6 +17,9 @@ class FrameAnnotator:
         self._max_trail_points = max_trail_points
         self._trails: dict[int, deque] = {}
         self._last_seen: dict[int, float] = {}
+
+    def trail_for(self, track_id: int) -> tuple[Point, ...]:
+        return tuple(self._trails.get(track_id, ()))
 
     def render(
         self,

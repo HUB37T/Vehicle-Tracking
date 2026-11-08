@@ -1,0 +1,2 @@
+# Install CPU PyTorch as described in README before installing this file.
+-e .[dev,tracking,ui]

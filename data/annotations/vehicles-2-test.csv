@@ -1,0 +1,29 @@
+clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes
+vehicles-2-test,T01,6,0.200200,car,A_TO_B,SUV gelap
+vehicles-2-test,T02,14,0.467133,car,A_TO_B,Mobil merah
+vehicles-2-test,T03,21,0.700700,truck,A_TO_B,Traktor biru
+vehicles-2-test,T04,31,1.034367,truck,A_TO_B,Truk boks putih setelah traktor biru
+vehicles-2-test,T05,39,1.301300,car,A_TO_B,Mobil gelap dekat batas kiri garis
+vehicles-2-test,T06,49,1.635000,car,A_TO_B,Minivan putih
+vehicles-2-test,T07,51,1.701700,car,A_TO_B,Mobil gelap menyusul minivan putih
+vehicles-2-test,T08,71,2.369033,car,A_TO_B,SUV putih
+vehicles-2-test,T09,89,2.969633,truck,A_TO_B,Kendaraan boks putih dengan kabin pendek
+vehicles-2-test,T10,97,3.236567,car,A_TO_B,Mobil gelap di belakang truk boks
+vehicles-2-test,T11,102,3.403400,car,A_TO_B,Mobil perak sebelum truk kuning
+vehicles-2-test,T12,105,3.503500,truck,A_TO_B,Truk kuning
+vehicles-2-test,T13,111,3.703700,car,A_TO_B,Mobil gelap di belakang truk kuning
+vehicles-2-test,T14,116,3.870533,car,A_TO_B,SUV putih
+vehicles-2-test,T15,122,4.070733,car,A_TO_B,Mobil merah gelap setelah SUV putih
+vehicles-2-test,T16,143,4.771433,truck,A_TO_B,Truk merah dengan bagian depan kuning
+vehicles-2-test,T17,149,4.971633,car,A_TO_B,Mobil perak setelah truk merah
+vehicles-2-test,T18,155,5.171833,car,A_TO_B,Mobil abu-abu
+vehicles-2-test,T19,161,5.372033,car,A_TO_B,SUV gelap
+vehicles-2-test,T20,163,5.438767,car,A_TO_B,Mobil krem di belakang SUV
+vehicles-2-test,T21,171,5.705700,car,A_TO_B,Mobil perak
+vehicles-2-test,T22,185,6.172833,car,A_TO_B,Mobil gelap
+vehicles-2-test,T23,191,6.373033,car,A_TO_B,Mobil perak setelah mobil gelap
+vehicles-2-test,T24,198,6.606600,car,A_TO_B,Mobil merah kecokelatan
+vehicles-2-test,T25,208,6.940267,car,A_TO_B,Mobil abu-abu
+vehicles-2-test,T26,215,7.173833,car,A_TO_B,Kendaraan gelap dengan lampu kuning
+vehicles-2-test,T27,230,7.674333,car,A_TO_B,Mobil putih
+vehicles-2-test,T28,237,7.907900,car,A_TO_B,Kendaraan utilitas ringan putih dengan rak

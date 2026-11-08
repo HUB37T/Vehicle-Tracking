@@ -1,5 +1,7 @@
 # Anotasi manual
 
+`vehicles.csv` dan `vehicles-2-test.csv` berisi anotasi awal dari cuplikan frame sumber. JSON pendamping mencatat checksum, segmen garis, cakupan, dan kasus ambigu. Lihat [hasil dan cara evaluasi](../../docs/counting-evaluation.md). Status anotasi masih menunggu peninjau kedua.
+
 Simpan ground truth dan metadata yang boleh dibagikan di folder ini. Berkas CSV di sini dapat masuk version control.
 
 Header GT event sesuai CONTEXT:

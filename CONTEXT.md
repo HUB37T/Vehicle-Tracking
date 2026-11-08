@@ -12,7 +12,7 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 
 **Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
 
-**Status terbaru:** kontrak, konfigurasi, counter, prapemrosesan, simulasi, adapter YOLO/ByteTrack, reader/writer MP4, pipeline CLI, renderer, callback, dan ekspor CSV/JSON/video sudah tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch; deklarasi paket >=3.11 belum berarti semua versi sudah diuji. Inferensi model nyata berhasil pada klip gerakan sintetis dari foto contoh resmi. Evaluasi rekaman jalan, UI Streamlit, dan evaluator GT belum selesai. Lihat README, `docs/integration-validation.md`, dan `docs/agent-b-handoff.md` untuk status serta perintah aktual.
+**Status terbaru:** pipeline video, panel bukti, antarmuka Streamlit, dan evaluator crossing tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch. Hasil awal dua klip jalan dicatat di `docs/counting-evaluation.md`. Peninjau kedua serta evaluasi akhir dengan cakupan kelas dan kondisi yang lebih beragam masih diperlukan.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -108,17 +108,22 @@ Pengenalan pelat, identifikasi pemilik kendaraan, pelacakan lintas kamera, detek
 
 ## 6. Kaitan dengan materi kuliah
 
-| Materi | Penerapan yang direncanakan | Bukti untuk laporan/demo |
+| Materi | Penerapan | Bukti untuk laporan/demo |
 | --- | --- | --- |
 | 1. Representasi citra | Frame, resolusi, koordinat piksel, kanal warna | Penjelasan format frame dan konsistensi koordinat |
-| 2. Konversi ruang warna | BGR/RGB untuk library dan tampilan; BGR–LAB–BGR untuk CLAHE | Contoh citra dan kanal L |
+| 2. Konversi ruang warna | BGR–LAB–BGR untuk CLAHE dan BGR–grayscale pada praktikum | Panel grayscale dan hasil CLAHE |
+| 3. Transformasi intensitas | Gamma correction sebagai pilihan input YOLO | Panel perbandingan mode dan konfigurasi run |
 | 4. Histogram dan peningkatan kualitas | CLAHE pada kanal luminansi | Perbandingan visual, histogram sampel, dan metrik counting |
+| 5–6. Filtering spasial | Gaussian smoothing dan unsharp masking sebagai pilihan input YOLO | Panel perbandingan mode dan konfigurasi run |
+| 9–10. Tepi dan thresholding | Canny pada grayscale yang dihaluskan, serta threshold tetap dan Otsu pada selisih antarframe | Panel tepi dan mask biner |
+| 11–12. Morfologi dan CCL | Opening dan closing mask Otsu, lalu pelabelan komponen dengan konektivitas 8 | Panel mask dan kotak kandidat, luas, serta centroid pada `lab.json` |
+| 15. Optical Flow | Lucas–Kanade untuk perpindahan titik sudut antara dua frame berurutan | Panel vektor gerak pada frame target |
 | 16. Tracking objek modern | ByteTrack sebagai metode tracking yang dipilih | ID dan lintasan antarframe; analisis ID switch |
 | 17–18. Deteksi deep learning dan YOLO | Detektor pretrained untuk jenis kendaraan | Box, kelas, confidence, serta penjelasan inferensi |
 
 ByteTrack adalah tambahan metode tracking modern, bukan nama lain DeepSORT. Jika dosen mensyaratkan algoritma persis dari daftar kuliah, konfirmasikan penerimaan ByteTrack atau rencanakan integrasi DeepSORT secara eksplisit.
 
-Thresholding, Canny, morfologi, FFT, segmentasi, dan pose estimation tidak dimasukkan hanya untuk memperbanyak daftar materi. Tambahkan metode ketika ada pertanyaan eksperimen atau kebutuhan yang jelas.
+`pcd-lab` membuat panel dari frame N−1 dan N. Selisih intensitas menunjukkan area perubahan, dan CCL menghasilkan kandidat area gerak yang dapat terpecah atau tergabung. Optical Flow memperkirakan perpindahan titik citra. `analyze` tetap memakai deteksi YOLO dan asosiasi ByteTrack sebagai sumber event crossing.
 
 ## 7. Aturan counting yang menjadi acuan bersama
 
@@ -188,7 +193,7 @@ Unggah video dan validasi metadata
     -> preview dan konfigurasi garis
     -> mulai run dengan konfigurasi tetap
     -> baca frame secara berurutan
-    -> prapemrosesan none / CLAHE
+    -> prapemrosesan none / clahe / gamma / gaussian / unsharp
     -> deteksi YOLO + asosiasi tracking ByteTrack
     -> normalisasi hasil menjadi TrackObservation
     -> evaluasi crossing dan catat CountEvent
@@ -197,7 +202,7 @@ Unggah video dan validasi metadata
     -> finalisasi, tampilkan, dan unduh hasil
 ```
 
-Prapemrosesan `none` mempertahankan isi frame untuk baseline. Mode `clahe` mengonversi BGR ke LAB, menerapkan CLAHE hanya pada kanal L, lalu mengonversi kembali ke BGR untuk masukan model. Tampilkan perbandingan frame sebelum/sesudah pada mode ini. Anotasi hasil digambar di frame sumber agar keluaran kedua mode dapat dibandingkan pada tampilan asli yang sama.
+Prapemrosesan `none` mempertahankan isi frame untuk baseline. `clahe` bekerja pada kanal L di LAB. `gamma` mengubah intensitas dengan pangkat gamma, `gaussian` menghaluskan citra, dan `unsharp` menambahkan selisih antara citra asli dan citra yang dihaluskan. Setiap run memilih satu mode. Anotasi tetap digambar di frame sumber agar hasil dapat dibandingkan.
 
 Konversi RGB untuk komponen tampilan dilakukan pada batas UI. Kontrak internal frame OpenCV tetap BGR. Koordinat hasil inferensi harus dipetakan ke citra asli sebelum masuk counter dan renderer.
 
@@ -230,6 +235,9 @@ preprocess:
   mode: none
   clahe_clip_limit: 2.0
   clahe_tile_grid_size: [8, 8]
+  gamma: 0.75
+  gaussian_kernel_size: 5
+  unsharp_amount: 0.7
 counting_line:
   line_id: main
   p1: [0.10, 0.60]
@@ -344,11 +352,13 @@ demo-001,main,12,150,5.0,motorcycle,A_TO_B
 
 **`annotated.mp4`:** video sumber dengan overlay, dimensi asli, dan FPS sumber. Audio tidak dipertahankan pada MVP; beri keterangan di UI/README. Video hasil menampilkan isi frame sumber, termasuk ketika inferensi memakai CLAHE.
 
+**`process_evidence.png`:** panel satu frame yang menampilkan sumber BGR, kanal L dari Lab, CLAHE pada L jika aktif, masukan aktual model, deteksi YOLO sebelum asosiasi, dan track ByteTrack beserta ID dan jejak. Frame crossing pertama diprioritaskan. Metadata `process_evidence` pada `run.json` mencatat frame, waktu, alasan pemilihan, status CLAHE, dan jumlah deteksi serta track. Kunci artefaknya juga `process_evidence`.
+
 Status run: `running`, `completed`, atau `failed`. Tulis `completed` setelah semua keluaran wajib selesai ditulis dan dapat dibaca. Jika pembacaan berhenti tidak wajar atau writer gagal, simpan status `failed` dan penjelasan; hasil parsial tidak disajikan sebagai hitungan akhir yang lengkap.
 
 Reader, writer, dan berkas sementara harus ditutup setelah sukses maupun gagal. Video diproses dan ditulis bertahap, tanpa menyimpan seluruh frame di memori. Batas ukuran unggahan dibuat jelas dan dapat dikonfigurasi; validasi mencakup decoder, bukan hanya ekstensi file.
 
-Implementasi CLI sekarang menerima MP4 lokal CFR dengan dimensi genap untuk H.264/yuv420p. Verifikasi output mendekode seluruh frame dan memeriksa dimensi, FPS, serta jumlahnya. Pemeriksaan input membaca frame awal dan membandingkan jumlah decode dengan metadata jika tersedia; VFR harus dikonversi oleh pengguna, belum dideteksi secara menyeluruh. Error sebelum pembuatan run menaikkan exception; error sesudahnya menghasilkan RunResult `failed`, metadata error, dan CSV parsial yang diberi status tersebut. Artefak sukses memakai kunci `run_json`, `events_csv`, `counts_csv`, dan `annotated_video`.
+Implementasi CLI sekarang menerima MP4 lokal CFR dengan dimensi genap untuk H.264/yuv420p. Verifikasi output mendekode seluruh frame dan memeriksa dimensi, FPS, serta jumlahnya. Pemeriksaan input membaca frame awal dan membandingkan jumlah decode dengan metadata jika tersedia; VFR harus dikonversi oleh pengguna, belum dideteksi secara menyeluruh. Error sebelum pembuatan run menaikkan exception; error sesudahnya menghasilkan RunResult `failed`, metadata error, dan CSV parsial yang diberi status tersebut. Artefak sukses memakai kunci `run_json`, `events_csv`, `counts_csv`, `annotated_video`, dan `process_evidence`.
 
 ## 13. Alur antarmuka pengguna
 
@@ -550,6 +560,9 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-08 | Integrasi CLI | Pengguna meminta implementasi deteksi/tracking/pipeline. YOLO11n pretrained + ByteTrack, MP4 H.264, CSV/JSON, dan callback tersedia. Renderer/ekspor dasar dibuat untuk uji end-to-end; UI/evaluator tetap tahap Agent B |
 | 2026-11-08 | Data | Training belum dilakukan; kumpulkan video pengembangan dan uji dengan GT crossing dahulu. Fine-tuning baru dipertimbangkan berdasarkan kegagalan baseline yang terukur |
 | 2026-11-08 | Distribusi bobot | Default prepare-model memakai repositori resmi Ultralytics di Hugging Face dengan revision/checksum; alternatif GitHub tersedia. Analisis tidak mengunduh bobot diam-diam |
+| 2026-11-08 | Materi tambahan | Mode gamma, Gaussian, dan unsharp tersedia di `analyze`. Thresholding, morfologi, CCL, Canny, dan Optical Flow dapat diperiksa melalui `pcd-lab`. Dampak terhadap hitungan diukur terpisah dengan GT |
+| 2026-11-08 | Bukti proses | Run sukses menyertakan panel satu frame untuk konversi warna, CLAHE, YOLO, dan ByteTrack, dengan frame serta status metode tercatat di metadata |
+| 2026-11-08 | UI dan evaluasi awal | Streamlit memakai pipeline yang sama dengan CLI. Evaluator memverifikasi video dan garis terhadap metadata anotasi. Dua klip sudah ditinjau visual awal dan menunggu validasi kedua |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 

@@ -16,12 +16,14 @@ from vehicle_counter.contracts import ProgressUpdate, RunConfig, RunResult, Vide
 from vehicle_counter.counting import VehicleCounter
 from vehicle_counter.exporting import export_counts, file_sha256, write_json
 from vehicle_counter.preprocessing import preprocess_frame
+from vehicle_counter.run_evidence import render_evidence, write_evidence
 from vehicle_counter.tracking import FrameTracker, YoloByteTracker
 from vehicle_counter.video import AnnotatedVideoWriter, VideoReader, verify_output_video
 from vehicle_counter.visualization import FrameAnnotator
 
 TrackerFactory = Callable[[RunConfig, VideoMetadata], FrameTracker]
 ProgressCallback = Callable[[ProgressUpdate], None]
+EVIDENCE_SELECTIONS = ("first_frame", "vehicle_visible", "track_with_trail", "first_crossing")
 
 
 def _versions() -> dict[str, str | None]:
@@ -88,6 +90,7 @@ def process_video(
             "config": config_to_dict(config),
             "software": _versions(),
             "tracker": None,
+            "process_evidence": None,
             "model_load_seconds": None,
             "processed_frames": 0,
             "processing_seconds": None,
@@ -102,6 +105,8 @@ def process_video(
         processed = 0
         processing_start = None
         last_preview = None
+        evidence = None
+        evidence_priority = -1
         try:
             manifest["source"]["sha256"] = file_sha256(reader.path)
             model_start = perf_counter()
@@ -130,7 +135,7 @@ def process_video(
                         for item in observations
                     ):
                         raise ValueError("Observasi tracker tidak sesuai frame/timestamp pipeline.")
-                    counter.update(observations)
+                    events = counter.update(observations)
                     annotated = annotator.render(
                         frame,
                         observations,
@@ -138,6 +143,36 @@ def process_video(
                         timestamp_seconds=timestamp,
                     )
                     writer.write(annotated)
+                    if evidence_priority < 3:
+                        detections = getattr(tracker, "last_detections", None)
+                        has_trail = any(
+                            len(annotator.trail_for(item.track_id)) >= 2 for item in observations
+                        )
+                        priority = int(bool(observations or detections))
+                        if has_trail:
+                            priority = 2
+                        if events:
+                            priority = 3
+                        if priority > evidence_priority:
+                            evidence = render_evidence(
+                                frame,
+                                input_frame,
+                                detections,
+                                observations,
+                                annotator,
+                                config.preprocess,
+                                frame_index=frame_index,
+                                timestamp_seconds=timestamp,
+                            )
+                            evidence_priority = priority
+                            manifest["process_evidence"] = {
+                                "frame_index": frame_index,
+                                "timestamp_seconds": timestamp,
+                                "selection": EVIDENCE_SELECTIONS[priority],
+                                "clahe_active": config.preprocess.mode == "clahe",
+                                "detections": None if detections is None else len(detections),
+                                "tracks": len(observations),
+                            }
                     processed += 1
                     last_preview = annotated
                     if on_progress and (processed == 1 or processed % preview_interval == 0):
@@ -173,9 +208,14 @@ def process_video(
                         preview_frame_bgr=last_preview.copy() if last_preview is not None else None,
                     )
                 )
+            if evidence is not None:
+                evidence_path = output_dir / "process_evidence.png"
+                write_evidence(evidence_path, evidence)
+                artifacts["process_evidence"] = str(evidence_path)
             manifest["status"] = "completed"
         except BaseException as error:
             manifest["status"] = "failed"
+            manifest["process_evidence"] = None
             manifest["error"] = {"type": type(error).__name__, "message": str(error)}
             warnings.append(f"Analisis gagal: {error}")
             # Preserve inspectable partial counts, always under failed run metadata.

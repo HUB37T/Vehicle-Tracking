@@ -78,7 +78,10 @@ def test_nested_configs_normalize_sequences_to_immutable_tuples():
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"mode": "gamma"},
+        {"mode": "invalid"},
+        {"gamma": 0},
+        {"gaussian_kernel_size": 4},
+        {"unsharp_amount": -1},
         {"clahe_clip_limit": float("inf")},
         {"clahe_clip_limit": 0},
         {"clahe_tile_grid_size": (0, 8)},

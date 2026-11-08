@@ -1,0 +1,33 @@
+{
+  "clip_id": "vehicles-2-test",
+  "source_url": "https://media.roboflow.com/supervision/video-examples/vehicles-2.mp4",
+  "source_sha256": "d24f33b678a23d14ac3d4b75dab2a7e1fa764d6b8d99efa56e462783685826af",
+  "video_metadata": {
+    "source_name": "vehicles-2-test.mp4",
+    "width": 1280,
+    "height": 720,
+    "source_fps": 29.97002997002997,
+    "frame_count": 240,
+    "duration_seconds": 8.008000000000001
+  },
+  "counting_line": {
+    "line_id": "main",
+    "p1": [
+      0.25,
+      0.8
+    ],
+    "p2": [
+      0.36,
+      0.8
+    ],
+    "epsilon_height_fraction": 0.01
+  },
+  "scope": "Delapan detik awal, diubah menjadi 1280x720. Segmen dipasang pada satu lajur tengah arah A ke B.",
+  "review_status": "preliminary_single_visual_review",
+  "method": "Tinjau urutan cuplikan frame sumber dengan garis. Waktu diperkirakan saat titik tengah bawah melewati zona netral menuju sisi berlawanan.",
+  "notes": [
+    "Ambang spasial memakai segmen yang sama dengan program. Kendaraan di luar ujung garis tidak disertakan.",
+    "Kendaraan perak dekat ujung kiri sekitar frame 134 dan kendaraan utilitas dekat ujung kanan sekitar frame 178 dikeluarkan dari anotasi karena titik tengah bawah terlihat di luar atau dekat batas.",
+    "Kendaraan utilitas ringan dan minivan dikelompokkan sebagai car. Traktor dan kendaraan boks komersial sebagai truck."
+  ]
+}

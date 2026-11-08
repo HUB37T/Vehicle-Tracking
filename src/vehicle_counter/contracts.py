@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 
 VEHICLE_CLASSES = ("car", "motorcycle", "bus", "truck")
 DIRECTIONS = ("A_TO_B", "B_TO_A")
+PREPROCESS_MODES = ("none", "clahe", "gamma", "gaussian", "unsharp")
 Point = tuple[float, float]
 BBox = tuple[float, float, float, float]
 
@@ -37,10 +38,24 @@ class PreprocessConfig:
     mode: str = "none"
     clahe_clip_limit: float = 2.0
     clahe_tile_grid_size: tuple[int, int] = (8, 8)
+    gamma: float = 0.75
+    gaussian_kernel_size: int = 5
+    unsharp_amount: float = 0.7
 
     def __post_init__(self) -> None:
-        if self.mode not in ("none", "clahe"):
-            raise ValueError("Mode prapemrosesan harus none atau clahe.")
+        if self.mode not in PREPROCESS_MODES:
+            raise ValueError(
+                f"Mode prapemrosesan harus salah satu dari {', '.join(PREPROCESS_MODES)}."
+            )
+        _finite(self.gamma, "gamma", 0)
+        if self.gamma == 0:
+            raise ValueError("gamma harus lebih besar dari nol.")
+        _integer(self.gaussian_kernel_size, "gaussian_kernel_size", 3)
+        if self.gaussian_kernel_size > 31 or self.gaussian_kernel_size % 2 == 0:
+            raise ValueError("gaussian_kernel_size harus ganjil pada rentang 3–31.")
+        _finite(self.unsharp_amount, "unsharp_amount", 0)
+        if self.unsharp_amount > 5:
+            raise ValueError("unsharp_amount harus berada pada rentang 0–5.")
         _finite(self.clahe_clip_limit, "clahe_clip_limit", 0)
         if self.clahe_clip_limit == 0:
             raise ValueError("clahe_clip_limit harus lebih besar dari nol.")

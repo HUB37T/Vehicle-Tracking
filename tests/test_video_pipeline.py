@@ -82,6 +82,17 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
     assert manifest["tracker"]["is_model_inference"] is False
     assert manifest["processing_fps"] > 0
     assert manifest["summary"]["total"] == 1
+    assert manifest["process_evidence"] == {
+        "frame_index": 8,
+        "timestamp_seconds": 0.8,
+        "selection": "first_crossing",
+        "clahe_active": False,
+        "detections": None,
+        "tracks": 1,
+    }
+    evidence_path = Path(result.artifact_paths["process_evidence"])
+    assert evidence_path.name == "process_evidence.png"
+    assert evidence_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert len(manifest["source"]["sha256"]) == 64
     assert updates[-1].processed_frames == 12
     assert len({update.run_id for update in updates}) == 1
@@ -262,3 +273,25 @@ def test_progress_callback_error_does_not_publish_success(synthetic_video, tmp_p
     manifest = json.loads(Path(result.artifact_paths["run_json"]).read_text())
     assert manifest["error"]["message"] == "fixture UI callback failure"
     assert manifest["processed_frames"] == 1
+
+
+def test_pcd_lab_exports_both_panels_without_reporting_motion_in_static_scene(tmp_path):
+    import cv2
+
+    from vehicle_counter.pcd_lab import export_lab
+
+    path = tmp_path / "static.mp4"
+    frame = np.zeros((120, 160, 3), dtype=np.uint8)
+    frame[30:65, 50:90] = 255
+    with AnnotatedVideoWriter(path, VideoMetadata(path.name, 160, 120, 10)) as writer:
+        writer.write(frame)
+        writer.write(frame)
+    output = export_lab(path, tmp_path, PreprocessConfig(), frame_index=1, min_area=100)
+    directory = Path(output["output_dir"])
+    report = json.loads((directory / "lab.json").read_text())
+    assert report["reference_frame_index"] == 0
+    assert report["frame_index"] == 1
+    assert report["motion_components"] == []
+    assert report["flow_arrows"] == 0
+    for name in ("classical.png", "preprocessing.png"):
+        assert cv2.imdecode(np.frombuffer((directory / name).read_bytes(), np.uint8), 1) is not None

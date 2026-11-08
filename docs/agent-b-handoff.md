@@ -2,7 +2,7 @@
 
 ## Status
 
-Kontrak, konfigurasi, counter, prapemrosesan, simulasi, adapter YOLO/ByteTrack, reader/writer video, dan `process_video(...)` sudah tersedia. Renderer dan ekspor CSV/JSON dasar juga dibuat agar pipeline dapat diuji lengkap. `app.py` dan `evaluation.py` belum dibuat. Semua fixture dan klip gerakan sintetis tetap diberi label; akurasi video jalan belum dievaluasi.
+Antarmuka `app.py` dan evaluator `evaluation.py` sudah terhubung ke pipeline. [Evaluasi awal](counting-evaluation.md) mencatat dua klip jalan dan kasus yang masih perlu peninjau kedua. Contoh integrasi di bawah tetap menjadi acuan saat mengubah UI atau pipeline.
 
 Ikuti instalasi dan pemeriksaan di [README](../README.md), lalu baca bagian 7, 11–15, dan 17 pada [CONTEXT](../CONTEXT.md).
 
@@ -86,18 +86,13 @@ Fungsi bersifat sinkron. Jalankan sekali ketika pengguna menekan mulai, kemudian
 
 Callback membawa snapshot ringkasan dan salinan `preview_frame_bgr`, termasuk pada frame terakhir. Ubah BGR ke RGB untuk tampilan. `total_frames` dapat `None`; tampilkan jumlah frame terproses jika persentase belum bisa dihitung. Jangan mengasumsikan callback dipanggil pada setiap frame atau bahwa progres 100% berarti semua berkas sudah diverifikasi; status akhir dari `RunResult` menentukan keberhasilan.
 
-Kunci `artifact_paths`: `run_json`, `events_csv`, `counts_csv`, dan `annotated_video` pada run sukses. Status `failed` dapat memiliki CSV parsial; tampilkan kegagalan, bukan hasil akhir lengkap. Detail error ada di `run.json` dan `warnings`. Input video yang tidak valid sebelum run dibuat menaikkan exception yang perlu ditampilkan UI.
+Run sukses menyediakan `run_json`, `events_csv`, `counts_csv`, `annotated_video`, dan `process_evidence` di `artifact_paths`. Tampilkan atau tawarkan unduhan `process_evidence` jika kuncinya tersedia agar UI juga dapat membuka run lama. Status `failed` dapat memiliki CSV parsial. Detail error ada di `run.json` dan `warnings`. Input video yang tidak valid sebelum run dibuat menaikkan exception yang perlu ditampilkan UI.
 
 Renderer `FrameAnnotator` dan fungsi `export_counts`/`write_json` sudah digunakan pipeline. Agent B dapat mengembangkan modul itu saat menghubungkan UI; pertahankan kontrak serta pengujian CSV/lifecycle yang tersedia. Ekspor memakai event yang sama dengan counter, bukan hitungan baru dari box yang ditampilkan.
 
 ## Tugas lanjutan
 
-1. Buat tampilan ringkasan dan tabel/grafik dari fixture dengan label simulasi.
-2. Sambungkan ekspor `events.csv` dan `counts.csv` yang sudah tersedia ke tombol unduh; pertahankan semua delapan bucket, termasuk saat event kosong.
-3. Sambungkan preview callback/video beranotasi dan kontrol garis ke UI. Renderer sudah menerima frame sumber, observasi, serta ringkasan.
-4. Siapkan evaluator dengan data sintetis berlabel untuk menguji pencocokan satu-ke-satu dan metrik. Evaluasi model yang sesungguhnya menunggu GT video.
-
-Ekspor fixture tidak diberi status inferensi nyata. Run sintetis yang memakai factory uji menuliskan `is_model_inference: false` dan peringatan di metadata. Integrasi upload dan interaksi pengguna masih milik UI; decoder, callback, MP4, serta `RunResult` pipeline sudah siap.
+Tinjau anotasi manual bersama anggota kedua, tambahkan klip uji untuk kelas dan arah yang belum tercakup, lalu perbarui laporan evaluasi. Run sintetis yang memakai factory uji menuliskan `is_model_inference: false` dan peringatan di metadata.
 
 ## Kepemilikan berkas dan langkah integrasi
 

@@ -6,9 +6,9 @@ Pengguna mengunggah rekaman jalan dari kamera diam, mengatur garis virtual, lalu
 
 ## Status proyek
 
-CLI video sudah tersedia: pembacaan MP4, YOLO11n pretrained, asosiasi ByteTrack, counter dua arah, prapemrosesan none/CLAHE, preview callback, CSV/JSON, dan MP4 H.264 beranotasi. Fondasi dan integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
+CLI video mendukung YOLO11n pretrained, ByteTrack, penghitung dua arah, lima mode prapemrosesan, ekspor CSV/JSON, dan MP4 beranotasi. CLI juga menyediakan praktikum pengolahan citra klasik dari dua frame. Integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
 
-Inferensi model sungguhan sudah diuji menggunakan klip gerakan sintetis dari foto contoh resmi. Ini membuktikan alur berjalan, belum mengukur akurasi pada video jalan nyata. Aplikasi Streamlit dan evaluator ground truth masih menjadi pekerjaan berikutnya untuk Agent B.
+Analisis bisa dijalankan lewat CLI atau antarmuka lokal Streamlit. Evaluasi awal terhadap anotasi manual tersedia untuk dua klip jalan. Lihat [hasil evaluasi awal](docs/counting-evaluation.md).
 
 ## Rencana fitur
 
@@ -71,9 +71,46 @@ Ganti `jalan.mp4` dengan nama rekamanmu. Atur koordinat garis ternormalisasi P1/
 
 Masukan baseline adalah MP4 lokal CFR dengan dimensi genap untuk ekspor H.264/yuv420p. Metadata dan frame awal divalidasi; VFR harus dikonversi terlebih dahulu. Pipeline mendeteksi ketidaksesuaian jumlah frame jika metadata menyediakannya. Jika jumlah frame tidak diketahui, keterbatasan verifikasi akhir sumber dicatat sebagai peringatan.
 
-Keluaran berada di `outputs/<run_id>/`: `events.csv`, `counts.csv`, `run.json`, dan `annotated.mp4`. Audio sumber tidak disertakan. Run diberi status `completed` setelah output video berhasil didekode seluruhnya dan hitungan cocok dengan event log. Kegagalan sesudah run dibuat menghasilkan metadata `failed`, penjelasan error, dan hitungan parsial; CLI mengembalikan kode keluar bukan nol.
+Folder `outputs/<run_id>/` berisi `events.csv`, `counts.csv`, `run.json`, `annotated.mp4`, dan `process_evidence.png`. Audio sumber tidak disertakan. Run diberi status `completed` setelah output video berhasil didekode seluruhnya dan hitungan cocok dengan event log. Kegagalan sesudah run dibuat menghasilkan metadata `failed`, penjelasan error, dan hitungan parsial. CLI mengembalikan kode keluar bukan nol.
+
+`process_evidence.png` memperlihatkan satu frame yang sama pada enam panel. Urutannya adalah frame sumber, kanal L setelah konversi BGR ke Lab, kanal L setelah CLAHE, masukan aktual detektor, deteksi YOLO dengan confidence, dan track ByteTrack dengan ID serta jejak. Panel CLAHE menandai status tidak aktif pada mode lain. Bukti memakai crossing pertama jika ada, dengan frame lain yang menampilkan deteksi atau track sebagai cadangan. `run.json` mencatat indeks, waktu, dan alasan pemilihan frame.
 
 Setiap run membuat detector/tracker dan counter baru. Setiap frame menjalankan satu inferensi deteksi, lalu asosiasi ByteTrack eksplisit; anchor counting berasal dari kotak deteksi yang cocok dengan ID pada frame tersebut. Konfigurasi tracker aktual, bobot/checksum, perangkat, versi, dan waktu pemrosesan dicatat di `run.json`.
+
+## Praktikum pengolahan citra
+
+Gunakan `pcd-lab` untuk melihat tahapan pada frame target dan frame sebelumnya. Contoh berikut memilih frame 60 dengan indeks mulai dari 0. Perintah ini cukup memakai dependensi fondasi dan OpenCV.
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli pcd-lab data/videos/vehicles.mp4 --frame 60 --config configs/default.yaml
+```
+
+- `classical.png` memperlihatkan grayscale, Gaussian smoothing, selisih antarframe, threshold global tetap versus Otsu, opening, closing, Connected Component Labeling (CCL), Canny, dan Optical Flow Lucas–Kanade.
+- `preprocessing.png` membandingkan frame yang sama pada mode `none`, `clahe`, `gamma`, `gaussian`, dan `unsharp`.
+- `lab.json` mencatat indeks frame, parameter, ambang Otsu, dan kotak, luas, serta centroid komponen. Komponen menunjukkan area perubahan piksel. Bayangan, goyangan kamera, atau bagian berbeda dari kendaraan yang sama dapat membentuk komponen sendiri. Panah Optical Flow diperbesar tiga kali untuk tampilan.
+
+Untuk memakai salah satu mode pada inferensi, tambahkan `--preprocess`. Pilih satu mode per analisis dan gunakan klip, garis, serta parameter deteksi yang sama untuk membandingkan hasil.
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/vehicles.mp4 --config configs/default.yaml --preprocess gamma
+```
+
+Konfigurasi `gamma` di bawah 1 mencerahkan midtone. `gaussian_kernel_size` mengatur ukuran kernel Gaussian yang juga dipakai pada `unsharp`. `unsharp_amount` mengatur kekuatan penajaman. Hasil `analyze` tetap menghitung crossing berdasarkan YOLO dan ByteTrack. Pengaruh setiap mode terhadap akurasi memerlukan pembanding berupa hitungan manual.
+
+## Menjalankan antarmuka Streamlit
+
+Setelah menyiapkan CPU PyTorch dan bobot model seperti pada instalasi tracking:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-ui.txt -c constraints.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hingga 100 MB. Geser koordinat P1/P2 sambil melihat preview, pilih prapemrosesan, lalu tekan **Mulai analisis**. Rekap, video, panel bukti, dan unduhan muncul setelah proses selesai. Folder hasil UI berada di `outputs/ui/<run_id>/`.
+
+## Mengevaluasi hitungan
+
+`vehicle-counter evaluate` menerima satu CSV anotasi, satu JSON pendamping dengan nama yang sama, dan folder hasil run. Evaluator memeriksa checksum video serta garis sebelum mencocokkan event. Contoh perintah, metrik, dan catatan kedua klip ada di [laporan evaluasi](docs/counting-evaluation.md).
 
 ## Mencoba tanpa video
 
@@ -110,7 +147,8 @@ src/vehicle_counter/contracts.py Kontrak data bersama dan konfigurasi immutable
 src/vehicle_counter/config.py    Pembacaan YAML dan snapshot konfigurasi
 src/vehicle_counter/geometry.py  Garis berhingga dan arah sisi
 src/vehicle_counter/counting.py  Event crossing dan ringkasan hitungan
-src/vehicle_counter/preprocessing.py  Mode none dan CLAHE
+src/vehicle_counter/preprocessing.py  None, CLAHE, gamma, Gaussian, dan unsharp
+src/vehicle_counter/pcd_lab.py         Panel materi pengolahan citra klasik
 src/vehicle_counter/simulation.py     Contoh observasi sintetis dan CLI
 src/vehicle_counter/tracking.py       Adapter YOLO + ByteTrack per run
 src/vehicle_counter/video.py          Reader MP4 dan writer H.264 streaming
@@ -122,7 +160,7 @@ tests/                          Pengujian otomatis
 docs/agent-b-handoff.md          Panduan integrasi untuk teman/Agent B
 ```
 
-Tahap berikutnya adalah pengujian pada rekaman jalan dan integrasi UI/evaluator Agent B. Renderer serta ekspor dasar sudah tersedia untuk dipakai bersama.
+Antarmuka dan evaluator sudah tersambung. Anotasi awal perlu ditinjau ulang oleh anggota kedua sebelum evaluasi akhir.
 
 ## Data dan bobot model
 

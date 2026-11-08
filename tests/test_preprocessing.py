@@ -38,3 +38,19 @@ def test_clahe_changes_dark_gradient_without_mutating_original():
     assert output.dtype == np.uint8
     assert not np.array_equal(output, original)
     np.testing.assert_array_equal(frame, original)
+
+
+def test_gamma_below_one_brightens_midtones_and_preserves_endpoints():
+    frame = np.array([[[0, 64, 255]]], dtype=np.uint8)
+    result = preprocess_frame(frame, PreprocessConfig(mode="gamma", gamma=0.5))
+    np.testing.assert_array_equal(result, [[[0, 128, 255]]])
+
+
+def test_gaussian_and_unsharp_move_edge_contrast_in_opposite_directions():
+    pytest.importorskip("cv2")
+    frame = np.full((11, 12, 3), 80, dtype=np.uint8)
+    frame[:, 6:] = 160
+    blurred = preprocess_frame(frame, PreprocessConfig(mode="gaussian"))
+    sharpened = preprocess_frame(frame, PreprocessConfig(mode="unsharp"))
+    assert sharpened[5, 5, 0] < frame[5, 5, 0] < blurred[5, 5, 0]
+    assert blurred[5, 6, 0] < frame[5, 6, 0] < sharpened[5, 6, 0]

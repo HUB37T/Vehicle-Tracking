@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Protocol
@@ -11,8 +12,15 @@ import numpy as np
 import yaml
 from numpy.typing import NDArray
 
-from vehicle_counter.contracts import RunConfig, TrackObservation, VideoMetadata
+from vehicle_counter.contracts import BBox, RunConfig, TrackObservation, VideoMetadata
 from vehicle_counter.exporting import file_sha256, write_json
+
+
+@dataclass(frozen=True, slots=True)
+class VehicleDetection:
+    class_name: str
+    confidence: float
+    bbox_xyxy: BBox
 
 
 class FrameTracker(Protocol):
@@ -195,6 +203,7 @@ class YoloByteTracker:
         self._config = config
         self._video = video
         self._next_frame = 0
+        self.last_detections: tuple[VehicleDetection, ...] = ()
         self.warnings = []
         if config.detector_conf > settings["track_low_thresh"]:
             self.warnings.append(
@@ -240,6 +249,12 @@ class YoloByteTracker:
             save=False,
         )
         detections = results[0].boxes.cpu().numpy()
+        self.last_detections = tuple(
+            VehicleDetection(self._names[int(class_id)], float(score), tuple(map(float, box)))
+            for box, score, class_id in zip(
+                detections.xyxy, detections.conf, detections.cls, strict=True
+            )
+        )
         # Update even when there are zero detections, so lost-track timers advance.
         rows = self._tracker.update(detections, img=frame_bgr)
         observations = observations_from_tracks(

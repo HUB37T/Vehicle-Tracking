@@ -1,0 +1,10 @@
+clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes
+vehicles,V01,10,0.40,car,A_TO_B,Mobil hitam di lajur kiri dekat median
+vehicles,V02,19,0.76,car,B_TO_A,Mobil gelap menjauh di lajur kanan
+vehicles,V03,20,0.80,car,A_TO_B,Mobil putih di belakang mobil hitam. Titik bawah sebagian tertutup dan waktu diperkirakan
+vehicles,V04,81,3.24,car,B_TO_A,Mobil abu-abu menjauh di lajur kanan
+vehicles,V05,211,8.44,car,A_TO_B,Mobil gelap mendekat
+vehicles,V06,348,13.92,car,A_TO_B,Mobil abu-abu mendekat sebelum truk kedua
+vehicles,V07,415,16.60,truck,A_TO_B,Truk putih TransProm
+vehicles,V08,422,16.88,car,B_TO_A,Mobil putih menjauh
+vehicles,V09,482,19.28,car,A_TO_B,Mobil biru mendekat di belakang truk

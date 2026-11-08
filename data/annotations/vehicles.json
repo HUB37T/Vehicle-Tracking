@@ -1,0 +1,32 @@
+{
+  "clip_id": "vehicles",
+  "source_url": "https://media.roboflow.com/supervision/video-examples/vehicles.mp4",
+  "source_sha256": "ac81100d9310bd4e9c02bc0b13b6492781d009742ced347766b2601be3c44ad4",
+  "video_metadata": {
+    "source_name": "vehicles.mp4",
+    "width": 3840,
+    "height": 2160,
+    "source_fps": 25.0,
+    "frame_count": 538,
+    "duration_seconds": 21.52
+  },
+  "counting_line": {
+    "line_id": "main",
+    "p1": [
+      0.1,
+      0.6
+    ],
+    "p2": [
+      0.9,
+      0.6
+    ],
+    "epsilon_height_fraction": 0.01
+  },
+  "scope": "Klip pengembangan penuh, kedua arah.",
+  "review_status": "preliminary_single_visual_review",
+  "method": "Tinjau urutan cuplikan frame sumber dengan garis. Waktu diperkirakan saat titik tengah bawah melewati zona netral menuju sisi berlawanan.",
+  "notes": [
+    "Truk putih sudah berada dalam zona netral saat frame pertama dan tidak disertakan.",
+    "Mobil putih sekitar 0,8 detik sebagian tertutup. Waktu diperkirakan dari urutan frame."
+  ]
+}
