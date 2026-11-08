@@ -2,6 +2,8 @@
 
 Image CPU menyiapkan Python, OpenCV, PyTorch, dan Streamlit di dalam kontainer. Nginx mempertahankan awalan `/vehicle-tracking/demo/` saat meneruskan HTTP dan WebSocket. Konfigurasi Streamlit lokal tetap menggunakan URL akar.
 
+Image demo memakai NumPy 2.2.6, OpenCV 4.12.0.88, dan runtime kompatibilitas Polars untuk CPU VM yang belum mendukung x86-64-v2. PyTorch memakai jalur CPU generik saat NNPACK tidak tersedia.
+
 Dari checkout GitHub pada VM, siapkan bobot resmi `models/yolo11n.pt`, direktori `data/videos` untuk contoh opsional, dan `outputs` yang bisa ditulis UID 1000. Jalankan:
 
 ```sh
