@@ -1,6 +1,6 @@
 # CONTEXT — Penghitung Kendaraan dari Video
 
-Versi dokumen: 0.2 | Dibuat/diperbarui: 6 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
+Versi dokumen: 0.3 | Dibuat: 6 November 2026 | Diperbarui: 8 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
 
 Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent yang membantu pengerjaan. Baca sebelum merancang, menulis kode, menguji, atau mengubah lingkup proyek. Isinya mencakup tujuan, istilah, spesifikasi perilaku, rancangan teknis awal, pembagian pekerjaan, dan kriteria selesai agar hasil dari agent yang berbeda dapat digabungkan.
 
@@ -12,7 +12,7 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 
 **Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
 
-**Pembaruan tahap fondasi:** kontrak data, konfigurasi YAML, geometri garis, counter dua arah, prapemrosesan none/CLAHE, dan CLI simulasi sintetis sudah diimplementasikan. Lingkungan lokal yang dipakai adalah Python 3.12 di Windows, menggantikan titik awal Python 3.11; paket mendeklarasikan Python >=3.11, tetapi pengujian saat ini pada 3.12. YOLO/ByteTrack, decoder/pipeline video, UI, ekspor run video, dan evaluasi nyata belum terintegrasi. Lihat README untuk perintah aktual dan `docs/agent-b-handoff.md` untuk pekerjaan yang dapat dimulai rekan.
+**Status terbaru:** kontrak, konfigurasi, counter, prapemrosesan, simulasi, adapter YOLO/ByteTrack, reader/writer MP4, pipeline CLI, renderer, callback, dan ekspor CSV/JSON/video sudah tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch; deklarasi paket >=3.11 belum berarti semua versi sudah diuji. Inferensi model nyata berhasil pada klip gerakan sintetis dari foto contoh resmi. Evaluasi rekaman jalan, UI Streamlit, dan evaluator GT belum selesai. Lihat README, `docs/integration-validation.md`, dan `docs/agent-b-handoff.md` untuk status serta perintah aktual.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -57,6 +57,9 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Run | Satu eksekusi analisis dengan video dan konfigurasi tetap, diidentifikasi oleh `run_id`. |
 | Ground truth / GT | Anotasi manual yang menjadi pembanding hasil sistem. |
 | Baseline | Konfigurasi pembanding awal dengan prapemrosesan `none`. |
+| Klip pengembangan | Rekaman untuk memilih parameter dan konfigurasi sebelum uji akhir. |
+| Klip uji akhir | Rekaman dengan GT manual yang dievaluasi setelah parameter dibekukan. |
+| Dataset fine-tuning | Frame dan bounding box berkelas untuk pelatihan tambahan jika evaluasi baseline menunjukkan kebutuhan; belum menjadi prasyarat proyek. |
 | CLAHE | Mode peningkatan kontras lokal untuk eksperimen pembanding. |
 | MVP | Versi minimum yang memenuhi fitur wajib pada bagian 5. |
 
@@ -256,6 +259,7 @@ project/
 ├── .gitattributes
 ├── pyproject.toml
 ├── requirements.txt
+├── requirements-tracking.txt
 ├── constraints.txt
 ├── app.py
 ├── configs/default.yaml
@@ -267,6 +271,8 @@ project/
 │   ├── geometry.py
 │   ├── counting.py
 │   ├── simulation.py
+│   ├── video.py
+│   ├── cli.py
 │   ├── pipeline.py
 │   ├── visualization.py
 │   ├── exporting.py
@@ -309,7 +315,9 @@ counter.update(observations_for_frame) -> list[CountEvent]
 counter.summary() -> CountSummary
 ```
 
-Counter yang sudah tersedia dibangun dengan `VehicleCounter(run_id, config, width=..., height=...)`. `counter.events` memberikan tuple event. `update` menerima satu batch observasi per frame; ID dalam batch harus unik, frame/timestamp sama, dan batch nonkosong harus meningkat terhadap sebelumnya. Batch kosong diperbolehkan. Untuk reset run, buat instance baru. `process_video(...)` tetap rancangan untuk tahap pipeline berikutnya.
+Counter dibangun dengan `VehicleCounter(run_id, config, width=..., height=...)`. `counter.events` memberikan tuple event. `update` menerima satu batch observasi per frame; ID dalam batch harus unik, frame/timestamp sama, dan batch nonkosong harus meningkat terhadap sebelumnya. Batch kosong diperbolehkan. Untuk reset run, buat instance baru. `process_video(...)` sudah tersedia di `pipeline.py`; keyword tambahan `tracker_factory` adalah seam pengujian. UI menggunakan default YOLO/ByteTrack, bukan fixture.
+
+Adapter menggunakan satu `YOLO.predict` per frame lalu `BYTETracker.update` eksplisit. Nama kelas dipetakan melalui model. Kotak `TrackObservation` diambil dari deteksi yang cocok dengan ID pada frame tersebut berdasarkan detection index, bukan posisi prediksi Kalman tanpa observasi. Tracker diperbarui juga ketika deteksi kosong. Isi konfigurasi ByteTrack aktual dan unit track_buffer (frame) masuk metadata.
 
 `process_video` bersifat sinkron untuk baseline. Callback progres membawa snapshot yang aman dibaca UI, bukan objek tracker yang dapat dimutasi. `preview_frame_bgr` adalah salinan frame beranotasi atau `null` ketika pembaruan tidak membawa gambar; UI mengonversinya ke RGB untuk ditampilkan. Pipeline boleh membatasi frekuensi callback/preview agar tampilan tidak memperlambat analisis. Pengaturan widget baru berlaku pada run berikutnya. Pemrosesan model dilakukan sekali per run; interaksi UI setelah selesai memakai hasil tersimpan, bukan menjalankan video ulang tanpa perintah pengguna.
 
@@ -339,6 +347,8 @@ demo-001,main,12,150,5.0,motorcycle,A_TO_B
 Status run: `running`, `completed`, atau `failed`. Tulis `completed` setelah semua keluaran wajib selesai ditulis dan dapat dibaca. Jika pembacaan berhenti tidak wajar atau writer gagal, simpan status `failed` dan penjelasan; hasil parsial tidak disajikan sebagai hitungan akhir yang lengkap.
 
 Reader, writer, dan berkas sementara harus ditutup setelah sukses maupun gagal. Video diproses dan ditulis bertahap, tanpa menyimpan seluruh frame di memori. Batas ukuran unggahan dibuat jelas dan dapat dikonfigurasi; validasi mencakup decoder, bukan hanya ekstensi file.
+
+Implementasi CLI sekarang menerima MP4 lokal CFR dengan dimensi genap untuk H.264/yuv420p. Verifikasi output mendekode seluruh frame dan memeriksa dimensi, FPS, serta jumlahnya. Pemeriksaan input membaca frame awal dan membandingkan jumlah decode dengan metadata jika tersedia; VFR harus dikonversi oleh pengguna, belum dideteksi secara menyeluruh. Error sebelum pembuatan run menaikkan exception; error sesudahnya menghasilkan RunResult `failed`, metadata error, dan CSV parsial yang diberi status tersebut. Artefak sukses memakai kunci `run_json`, `events_csv`, `counts_csv`, dan `annotated_video`.
 
 ## 13. Alur antarmuka pengguna
 
@@ -387,6 +397,7 @@ mAP memerlukan anotasi bounding box; IDF1/MOTA/HOTA memerlukan anotasi tracking 
 
 - `processing_fps = processed_frames / processing_wall_seconds` untuk pipeline dari pembacaan frame sampai finalisasi output; unduh bobot dan unggah file di luar pengukuran ini.
 - Catat waktu pemuatan model secara terpisah, perangkat, resolusi, versi, konfigurasi, serta durasi video.
+- Pada CLI, inspeksi awal/checksum sumber berada di luar timer processing; model_load_seconds mencatat pembuatan detector/tracker. Timer processing mencakup loop, encoding/finalisasi video, verifikasi decode output, ekspor CSV, dan callback. total_wall_seconds mencakup penyiapan; penulisan metadata final berada sesudah pengukuran.
 - Pemrosesan video unggahan tidak harus real-time. Sebutan real-time hanya dipakai jika pipeline terukur memenuhi kebutuhan FPS sumber pada perangkat yang dilaporkan.
 - Jika mengulang benchmark, simpan semua hasil dan jelaskan ringkasannya; jangan memilih hanya run tercepat atau paling akurat.
 
@@ -422,7 +433,7 @@ Integrasi minimal diuji pada satu video pendek nyata: inferensi/tracking berjala
 
 - [ ] Instalasi dan cara menjalankan aplikasi tersedia di README dan berhasil diikuti dari lingkungan baru yang didukung.
 - [ ] Seluruh fitur MVP bekerja pada video demo, termasuk run ulang dan input tanpa kendaraan.
-- [ ] Pengujian logika counting yang relevan lulus.
+- [x] Pengujian logika counting yang relevan lulus; suite integrasi 8 November 2026 mencakup 118 tes keseluruhan.
 - [ ] Semua artefak run sukses valid dan totalnya konsisten.
 - [ ] Evaluasi manual dan perbandingan none/CLAHE selesai pada data yang dicatat.
 - [ ] Ada contoh kegagalan serta penjelasan keterbatasan, bukan hanya video terbaik.
@@ -441,7 +452,7 @@ Integrasi minimal diuji pada satu video pendek nyata: inferensi/tracking berjala
 
 Berkas bersama: `CONTEXT.md`, `contracts.py`, `configs/default.yaml`, `requirements.txt`, dan `README.md`. Tentukan satu penanggung jawab pada setiap perubahan berkas bersama. Agent A mengoordinasikan bentuk kontrak awal; Agent B meninjau kebutuhan UI/ekspor sebelum integrasi. Pembagian ini saran dan boleh ditukar oleh tim.
 
-Agent B dapat mulai dengan fixture sesuai kontrak sambil pipeline dikerjakan. Fixture diberi label data contoh dan diganti hasil pipeline saat integrasi; demo akhir memakai video nyata. Preview dan ringkasan masuk melalui `on_progress` sesuai kontrak bagian 11.
+Agent B dapat memakai fixture sesuai kontrak lalu menyambungkan pipeline nyata. Fixture diberi label data contoh; demo akhir memakai video nyata. Preview dan ringkasan masuk melalui `on_progress` sesuai kontrak bagian 11. Pada tahap integrasi CLI, Agent A membuat renderer dan ekspor minimal yang dibutuhkan pipeline karena belum ada implementasi rekan pada berkas tersebut. Agent B melanjutkan integrasi UI/evaluator dan pengembangan renderer/ekspor dengan mempertahankan kontrak serta tes.
 
 Gunakan branch terpisah atau folder kerja terisolasi jika bekerja serentak. Periksa perubahan yang belum digabung sebelum mengedit. Hindari menghapus atau menimpa pekerjaan rekan. Setiap handoff menyertakan perubahan, pemeriksaan yang dijalankan, contoh penggunaan, dan keterbatasan.
 
@@ -536,6 +547,9 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-06 | Instruksi pengguna | Inisialisasi dan push repositori ke `HUB37T/Vehicle-Tracking`; tambahkan README, aturan Git, dan arahan agent. Implementasi aplikasi tetap tahap berikutnya |
 | 2026-11-06 | Implementasi fondasi | Pengguna meminta mulai dari bagian yang dapat dikerjakan tanpa video. Kontrak, konfigurasi, counter, prapemrosesan, dan simulasi tersedia; simulasi selalu berlabel sintetis |
 | 2026-11-06 | Lingkungan aktual | Memakai Python 3.12 yang sudah tersedia, dengan dependensi fondasi tercatat di constraints.txt. Integrasi dependensi YOLO/Streamlit diuji pada tahap berikutnya |
+| 2026-11-08 | Integrasi CLI | Pengguna meminta implementasi deteksi/tracking/pipeline. YOLO11n pretrained + ByteTrack, MP4 H.264, CSV/JSON, dan callback tersedia. Renderer/ekspor dasar dibuat untuk uji end-to-end; UI/evaluator tetap tahap Agent B |
+| 2026-11-08 | Data | Training belum dilakukan; kumpulkan video pengembangan dan uji dengan GT crossing dahulu. Fine-tuning baru dipertimbangkan berdasarkan kegagalan baseline yang terukur |
+| 2026-11-08 | Distribusi bobot | Default prepare-model memakai repositori resmi Ultralytics di Hugging Face dengan revision/checksum; alternatif GitHub tersedia. Analisis tidak mengunduh bobot diam-diam |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 
@@ -557,5 +571,6 @@ Dokumentasi berikut diperiksa pada 6 November 2026. Ini rujukan penggunaan libra
 - [Ultralytics Multi-Object Tracking](https://docs.ultralytics.com/modes/track/): ID tracking, pemilihan ByteTrack, dan parameter tracker. ByteTrack dan DeepSORT adalah algoritma yang berbeda.
 - [OpenCV Histogram Equalization dan CLAHE](https://docs.opencv.org/4.x/d5/daf/tutorial_py_histogram_equalization.html): dasar eksperimen peningkatan kontras.
 - [Streamlit File Uploader](https://docs.streamlit.io/develop/api-reference/widgets/st.file_uploader): unggahan file dan pengaturan batas ukuran. Pipeline tetap harus memeriksa keterbacaan video.
+- [Repositori model resmi Ultralytics di Hugging Face](https://huggingface.co/Ultralytics/YOLO11): distribusi bobot yang dipakai prepare-model dengan revision/checksum; diperiksa 8 November 2026.
 
 Tambahkan sumber primer atau paper algoritma yang benar-benar dibahas saat menulis laporan akademik. Catat lisensi library, bobot, dan video yang dipakai sesuai sumbernya.

@@ -13,9 +13,14 @@ dependencies = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
 [project.optional-dependencies]
 vision = ["opencv-python>=4.8,<5"]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
+tracking = [
+    "opencv-python>=4.8,<5", "ultralytics>=8.4.207,<9", "lap>=0.5,<1",
+    "imageio-ffmpeg>=0.5,<1", "requests>=2.23,<3",
+]
 
 [project.scripts]
 vehicle-counter-simulate = "vehicle_counter.simulation:main"
+vehicle-counter = "vehicle_counter.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

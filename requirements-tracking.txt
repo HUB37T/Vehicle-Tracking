@@ -1,0 +1,2 @@
+# Install CPU PyTorch first as described in README, then this integration extra.
+-e .[dev,tracking]
