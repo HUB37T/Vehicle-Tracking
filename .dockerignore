@@ -1,0 +1,15 @@
+**
+!app.py
+!README.md
+!pyproject.toml
+!constraints.txt
+!requirements-ui.txt
+!configs
+!configs/default.yaml
+!.streamlit
+!.streamlit/config.toml
+!src
+!src/vehicle_counter
+!src/vehicle_counter/*.py
+!deploy
+!deploy/Dockerfile
