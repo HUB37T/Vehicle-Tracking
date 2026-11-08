@@ -63,7 +63,8 @@ class TruckCropReviewer:
         if min(crop.shape[:2]) < 24:
             return False
         rgb = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
-        with torch.inference_mode():
+        # Depthwise convolutions need the portable kernel on older VM CPUs.
+        with torch.inference_mode(), torch.backends.mkldnn.flags(enabled=False):
             probabilities = self._model(self._transforms(rgb).unsqueeze(0)).softmax(1)[0]
         return (
             int(probabilities.argmax()) in self._light_indices
