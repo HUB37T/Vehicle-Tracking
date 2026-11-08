@@ -21,7 +21,7 @@ Pada ByteTrack, frame 151 dan 180 mengandung kotak gabungan pasangan kendaraan y
 - DeepSORT memakai [konfigurasi tetap](../configs/deepsort.yaml): `max_age=30`, `n_init=3`, `max_cosine_distance=0.20`, `max_iou_distance=0.70`, `nn_budget=100`. `fuse_score` bukan parameter DeepSORT.
 - Fitur tampilan DeepSORT: MobileNetV2 bottleneck pretrained ImageNet, CPU float32. Bobot dibundel `deep-sort-realtime==1.3.2`, SHA256 `2f518e773d4402dde55f981ae3078a72ba95c3adccae1d55051a4be844d50197`. Belum ada pelatihan ReID khusus kendaraan.
 
-Adapter DeepSORT hanya meneruskan track terkonfirmasi dengan deteksi aktual pada frame tersebut. Indeks deteksi disimpan sebagai data tambahan asosiasi. Counter menerima box deteksi asli yang cocok, bukan posisi prediksi Kalman ketika deteksi hilang. Setiap run memakai tracker baru. CPU tanpa kemampuan instruksi lanjutan memakai kernel MobileNet tanpa MKLDNN; cabang ini diuji lokal dengan kemampuan CPU disimulasikan, belum diuji pada VM.
+Adapter DeepSORT hanya meneruskan track terkonfirmasi dengan deteksi aktual pada frame tersebut. Indeks deteksi disimpan sebagai data tambahan asosiasi. Counter menerima box deteksi asli yang cocok, bukan posisi prediksi Kalman ketika deteksi hilang. Setiap run memakai tracker baru. CPU tanpa kemampuan instruksi lanjutan memakai kernel MobileNet tanpa MKLDNN; cabang ini diuji lokal dengan kemampuan CPU disimulasikan, lalu berhasil menjalankan analisis hujan pada CPU VM yang melaporkan kemampuan `DEFAULT`. Lihat [validasi VM](../deploy/README.md#validasi-vm-8-november-2026).
 
 ## Hasil inferensi ulang
 
@@ -75,4 +75,4 @@ Delapan run lengkap pada matriks di atas selesai dan jumlah frame, event, audit,
 
 ## Batas dan prioritas berikutnya
 
-Hasil Istanbul belum bebas kesalahan. Prioritas akurasi adalah anotasi bounding box dan identitas pada area garis yang tertutup, lalu memperbaiki kualitas deteksi/pemisahan objek dan menilai asosiasi terhadap anotasi itu. Menambahkan metode tracking sendiri belum cukup. Video hujan dan klip lama tetap dipakai sebagai uji regresi agar perbaikan pada antrean tidak menghapus dua kendaraan berbeda yang lewat rapat. Bus, motor, malam hari, dan kamera bergerak belum tercakup penuh pada evaluasi ini. Perubahan ini belum dideploy ke VM.
+Hasil Istanbul belum bebas kesalahan. Prioritas akurasi adalah anotasi bounding box dan identitas pada area garis yang tertutup, lalu memperbaiki kualitas deteksi/pemisahan objek dan menilai asosiasi terhadap anotasi itu. Menambahkan metode tracking sendiri belum cukup. Video hujan dan klip lama tetap dipakai sebagai uji regresi agar perbaikan pada antrean tidak menghapus dua kendaraan berbeda yang lewat rapat. Bus, motor, malam hari, dan kamera bergerak belum tercakup penuh pada evaluasi ini. Petunjuk dan status deployment VM dicatat di [panduan deployment](../deploy/README.md).

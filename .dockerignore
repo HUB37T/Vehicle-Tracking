@@ -17,3 +17,4 @@
 !src/vehicle_counter/*.py
 !deploy
 !deploy/Dockerfile
+!deploy/Dockerfile.update

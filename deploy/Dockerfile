@@ -18,6 +18,8 @@ RUN python -m pip install -r requirements-ui.txt -c constraints.txt && python -m
 # The demo VM lacks the x86-64-v2 instructions required by newer wheels.
 RUN python -m pip install numpy==2.2.6 opencv-python==4.12.0.88 'polars[rtcompat]==2.1.0' \
     && python -m pip check
+RUN python -m pip install --no-deps deep-sort-realtime==1.3.2 scipy==1.18.1 \
+    && python -m pip check
 ENV POLARS_FORCE_PKG=compat TORCH_CPP_LOG_LEVEL=ERROR
 
 COPY app.py ./
