@@ -118,7 +118,7 @@ def show_quality(report, panel_path=None):
 
 
 def show_image_analytics(result, manifest):
-    stages, quality, heat = st.tabs(("Tahapan model", "Kualitas video", "Heatmap"))
+    stages, quality = st.tabs(("Tahapan model", "Kualitas video"))
     with stages:
         if path := result.artifact_paths.get("process_evidence"):
             st.image(
@@ -133,22 +133,23 @@ def show_image_analytics(result, manifest):
             show_quality(report, result.artifact_paths.get("quality_png"))
         else:
             st.info("Aktifkan pemeriksaan kualitas dan analisis ulang untuk mendapatkan panel ini.")
-    with heat:
-        if path := result.artifact_paths.get("heatmap_png"):
-            st.image(path, width="stretch", caption="Heatmap waktu keberadaan anchor kendaraan")
+
+
+def show_heatmap(result):
+    if path := result.artifact_paths.get("heatmap_png"):
+        st.image(path, width="stretch", caption="Heatmap waktu keberadaan kendaraan")
+        st.caption(
+            "Warna yang lebih hangat menunjukkan lokasi tempat kendaraan lebih lama teramati. "
+            "Buka Lalu lintas untuk memeriksa indikasi macet."
+        )
+        if metadata := result.artifact_paths.get("heatmap_json"):
+            info = json.loads(Path(metadata).read_text(encoding="utf-8"))
             st.caption(
-                "Warna hangat menunjukkan akumulasi keberadaan yang lebih tinggi "
-                "dalam video ini. Heatmap memakai hasil tracking yang sama; bukan "
-                "jumlah kendaraan unik, kecepatan fisik, atau bukti macet."
+                f"Puncak sel mentah {info['maximum_raw_seconds']:.2f} detik teramati. "
+                "Gaussian smoothing hanya dipakai untuk tampilan."
             )
-            if metadata := result.artifact_paths.get("heatmap_json"):
-                info = json.loads(Path(metadata).read_text(encoding="utf-8"))
-                st.caption(
-                    f"Puncak sel mentah: {info['maximum_raw_seconds']:.2f} detik teramati. "
-                    "Gaussian smoothing hanya dipakai untuk tampilan."
-                )
-        else:
-            st.info("Aktifkan heatmap sebelum memulai analisis.")
+    else:
+        st.info("Centang Buat heatmap keberadaan kendaraan di Siapkan analisis, lalu jalankan.")
 
 
 def show_traffic_zones(result, manifest, frame_loader):

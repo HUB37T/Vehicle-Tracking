@@ -6,6 +6,7 @@ import streamlit as st
 
 from vehicle_counter.contracts import CountSummary, RunResult
 from vehicle_counter.jobs import ACTIVE, JobQueue
+from vehicle_counter.ui_layout import QUEUE, RESULTS, WORKSPACE_KEY, open_view
 
 LABELS = {
     "preparing": "Menyalin video",
@@ -16,6 +17,7 @@ LABELS = {
     "cancelled": "Dibatalkan",
     "failed": "Gagal",
 }
+STATUS_COLORS = {"completed": "green", "running": "teal", "failed": "red"}
 
 
 def restore_job(job):
@@ -57,7 +59,10 @@ def _render_jobs(root: str, project_root: str, owner: str):
     )
     for job in jobs[:5]:
         with st.container(border=True):
-            st.write(f"{job['payload']['source_label']} · {LABELS[job['status']]}")
+            status = job["status"]
+            name, badge = st.columns([3, 2])
+            name.text(job["payload"]["source_label"])
+            badge.badge(LABELS[status], color=STATUS_COLORS.get(status, "gray"))
             if job["status"] in ("queued", "preparing"):
                 st.info(
                     f"Posisi antrean: {job['position']}. "
@@ -102,9 +107,11 @@ def _render_jobs(root: str, project_root: str, owner: str):
                 ):
                     restore_job(job)
                     st.session_state.loaded_job = job["job_id"]
+                    if st.session_state.get(WORKSPACE_KEY) == QUEUE:
+                        open_view(RESULTS)
                     st.rerun()
                 if st.button("Buka hasil pekerjaan", key=f"open-job-{job['job_id']}"):
                     restore_job(job)
-                    st.rerun()
+                    open_view(RESULTS)
             if job["error"]:
                 st.warning(job["error"])

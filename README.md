@@ -128,7 +128,9 @@ Setelah menyiapkan CPU PyTorch dan bobot model seperti pada instalasi tracking:
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hingga 100 MB. Pada profil **Kustom**, geser titik P1/P2 langsung di gambar atau gunakan kontrol angka, lalu pilih prapemrosesan. Profil evaluasi mempertahankan garis yang dibekukan. Jalankan **Uji singkat** (3/5/10 detik awal) untuk mengecek pengaturan, lalu **Mulai analisis** untuk video penuh. Permintaan masuk antrean dan hasil baru berada di `outputs/jobs/<job_id>/`; hasil UI lama di `outputs/ui/` tetap terbaca.
+Buka `http://127.0.0.1:8501`. Di **Siapkan analisis**, pilih video dari `data/videos/` atau unggah MP4 hingga 100 MB. Pada profil **Kustom**, geser titik P1/P2 langsung di pratinjau atau gunakan kontrol angka. Profil evaluasi mempertahankan garis yang dibekukan. Pengaturan YOLO, tracker, prapemrosesan, dan kualitas video ada di **Model dan pelacakan**.
+
+Pakai **Uji singkat** untuk memeriksa 3, 5, atau 10 detik awal, atau **Mulai analisis** untuk video penuh. Pantau proses di **Antrean**. Jika kamu masih di tab Antrean saat proses berakhir, aplikasi membuka **Hasil**. **Riwayat** membuka kembali hasil tersimpan. Hasil baru berada di `outputs/jobs/<job_id>/` dan hasil lama di `outputs/ui/` tetap terbaca.
 
 ### Antrean dan tombol batal
 
@@ -139,7 +141,7 @@ Pekerjaan menyimpan salinan video serta konfigurasi saat dikirim; perubahan widg
 - **Perbandingan metode** menjalankan none vs CLAHE, ByteTrack vs DeepSORT, atau empat kombinasi dengan video, garis, area, dan durasi yang sama. DeepSORT membutuhkan dependensi opsional di bawah. Tabel membandingkan jumlah serta waktu pemrosesan; penilaian akurasi membutuhkan anotasi manual. Gunakan run penuh untuk evaluasi GT seluruh video.
 - **YOLO11n vs YOLO11s** pada perbandingan metode memakai konfigurasi sama dan menampilkan nama model, ukuran masukan, confidence, serta checksum bobot. Kedua bobot harus tersedia lokal. Jangan menilai model hanya dari jumlah deteksi atau crossing yang lebih banyak.
 - **Riwayat analisis** dapat mencari dan membuka kembali hingga 100 run terbaru di `outputs/`, termasuk run singkat dan hasil gagal. Hasil yang dibuka memakai konfigurasi run tersimpan; pengaturan percobaan baru tidak mengubahnya. Folder run yang dipindah tetap bisa dibuka jika berkas hasilnya lengkap.
-- **Grafik waktu** menampilkan crossing per interval 5 detik dari event otomatis. **Diagnostik** membantu memeriksa deteksi kosong, track belum muncul, posisi terhadap garis, dan jeda ID. Petunjuk ini belum membuktikan penyebab semua kesalahan.
+- **Hasil → Rekap** menampilkan crossing per kelas dan arah beserta grafik waktu per interval 5 detik dari event otomatis. Buka **Bukti materi → Diagnostik deteksi dan tracking** untuk memeriksa deteksi kosong, track belum muncul, posisi terhadap garis, dan jeda ID.
 - **Audit crossing** menyediakan catatan pemeriksaan manual termasuk kendaraan terlewat. Catatan tersimpan sebagai riwayat terpisah dan dapat diunduh; hitungan otomatis tetap bersumber dari `events.csv`.
 - Keluaran tambahan berupa `timeline.csv`, `diagnostics.json`, dan `traffic.csv` jika indikator macet aktif. Hasil uji singkat diberi label khusus dan tidak dianggap hitungan seluruh video. Pembuatan laporan PDF ditunda.
 
@@ -167,7 +169,7 @@ Setelah indikator macet aktif, buka **Zona macet per lajur/arah**, centang anali
 
 Tab **Lalu lintas** menampilkan status/episode per zona dan CSV `traffic_zones.csv`/`traffic_zone_episodes.csv`. Area persegi panjang utama tetap ditampilkan terpisah. Profil **Pemulihan crossing** untuk klip `vehicles-3-bytetrack-test.mp4` kini menggunakan preset [dua zona contoh](configs/experiments/vehicles-3-coursework.yaml); bentuknya perlu disesuaikan untuk kamera lain.
 
-Centang **Buat heatmap keberadaan kendaraan**, lalu buka **Bukti materi → Heatmap** setelah analisis. Heatmap memakai anchor hasil tracking yang sama, dengan penambahan `1/FPS` detik per sel yang teramati setiap frame. `heatmap.npz` menyimpan grid mentah 128×128, `heatmap.json` menjelaskan satuan/skala, dan `heatmap.png` menampilkan warna relatif pada frame sumber. Gaussian smoothing hanya memperhalus tampilan. Warna hangat bukan bukti macet atau jumlah kendaraan unik. CLI: tambahkan `--heatmap`.
+Centang **Buat heatmap keberadaan kendaraan**, lalu buka **Hasil → Heatmap** setelah analisis. Heatmap memakai anchor hasil tracking yang sama, dengan penambahan `1/FPS` detik per sel yang teramati setiap frame. `heatmap.npz` menyimpan grid mentah 128×128, `heatmap.json` menjelaskan satuan/skala, dan `heatmap.png` menampilkan warna relatif pada frame sumber. Gaussian smoothing hanya memperhalus tampilan. Warna hangat bukan bukti macet atau jumlah kendaraan unik. CLI: tambahkan `--heatmap`.
 
 ### Menyiapkan label untuk fine-tuning
 

@@ -17,6 +17,7 @@ import streamlit as st
 
 from vehicle_counter.analytics_dashboard import (
     configure_zones,
+    show_heatmap,
     show_image_analytics,
     show_quality,
     show_traffic_zones,
@@ -44,6 +45,7 @@ from vehicle_counter.jobs import ACTIVE, JobQueue
 from vehicle_counter.line_editor import decode_editor, render_editor
 from vehicle_counter.quality import inspect_quality
 from vehicle_counter.tracking import load_tracker_settings
+from vehicle_counter.ui_layout import QUEUE, RESULTS, SETUP, open_view, show_header, workspace_tabs
 from vehicle_counter.video import VideoReader
 
 ROOT = Path(__file__).resolve().parent
@@ -208,16 +210,15 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         (result.summary.total, *directions),
         strict=True,
     ):
-        column.metric(label, value)
-    table, video, evidence, audit, timeline, traffic, diagnosis, exports = st.tabs(
+        column.metric(label, value, border=True)
+    table, video, traffic, heatmap, evidence, audit, exports = st.tabs(
         (
             "Rekap",
             "Video",
+            "Lalu lintas",
+            "Heatmap",
             "Bukti materi",
             "Audit crossing",
-            "Grafik waktu",
-            "Lalu lintas",
-            "Diagnostik",
             "Unduhan",
         )
     )
@@ -227,13 +228,22 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
             for name, counts in result.summary.by_class_direction.items()
         ]
         frame = pd.DataFrame(rows)
-        st.dataframe(frame, hide_index=True)
-        st.bar_chart(frame, x="Kendaraan", y=["A → B", "B → A"], stack=False)
+        counts_table, counts_chart = st.columns([1, 1.5])
+        with counts_table:
+            st.subheader("Hitungan per kelas", anchor=False)
+            st.dataframe(frame, hide_index=True)
+        counts_chart.bar_chart(frame, x="Kendaraan", y=["A → B", "B → A"], stack=False)
+        with st.container(border=True):
+            show_timeline(result)
     with video:
         st.video(Path(result.artifact_paths["annotated_video"]))
         st.caption("Video beranotasi disimpan tanpa audio sumber.")
     with evidence:
         show_image_analytics(result, manifest)
+        with st.expander("Diagnostik deteksi dan tracking"):
+            show_diagnostics(result, manifest, _audit_frame)
+    with heatmap:
+        show_heatmap(result)
     with audit:
         st.caption(
             "Hitungan berasal dari event tracker. Kotak yang bertumpuk perlu diperiksa pada "
@@ -271,13 +281,9 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         if PUBLIC_DEMO:
             label_root /= st.session_state.job_owner
         show_dataset_labels(result, manifest, label_root)
-    with timeline:
-        show_timeline(result)
     with traffic:
         show_traffic_zones(result, manifest, _audit_frame)
         show_traffic(result, manifest, _audit_frame)
-    with diagnosis:
-        show_diagnostics(result, manifest, _audit_frame)
     with exports:
         for key, label, mime in (
             ("events_csv", "Unduh daftar crossing", "text/csv"),
@@ -307,14 +313,9 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
                     st.write(warning)
 
 
-def main() -> None:
-    st.set_page_config(page_title="Penghitung Kendaraan", layout="wide")
-    st.title("Penghitung Kendaraan")
-    st.caption("Praktikum pengolahan citra · YOLO11 · ByteTrack atau DeepSORT")
-    owner = st.session_state.setdefault("job_owner", uuid4().hex)
-    queue = JobQueue(ROOT / "outputs" / "jobs", ROOT)
-    owned_jobs = queue.owned(owner)
-    with st.expander("Riwayat analisis"):
+def _show_history(queue, owned_jobs) -> None:
+    with st.container(border=True):
+        st.subheader("Riwayat analisis", anchor=False)
         if PUBLIC_DEMO:
             st.caption("Riwayat demo menampilkan pekerjaan dari sesi browser ini.")
         if st.checkbox("Tampilkan riwayat tersimpan", value=False):
@@ -348,48 +349,32 @@ def main() -> None:
                                 info["config"]["preprocess"]["mode"],
                                 "Riwayat",
                             )
+                            open_view(RESULTS)
                         except (ValueError, OSError, KeyError) as error:
                             st.error(f"Hasil belum bisa dibuka. {error}")
                 else:
                     st.info("Tidak ada hasil yang cocok dengan pencarian.")
             else:
                 st.info("Belum ada analisis tersimpan.")
+
+
+def _show_setup(queue, owner, has_active) -> None:
     config = load_config(ROOT / "configs" / "default.yaml")
-    has_active = any(job["status"] in ACTIVE for job in owned_jobs)
     local_videos = {p.name: p for p in sorted((ROOT / "data" / "videos").glob("*.mp4"))}
-    setup, preview = st.columns([1, 2])
+    with st.container(key="vehicle_setup"):
+        settings_column, preview_column = st.columns([1, 1.9], gap="large")
+    setup = settings_column.container(border=True)
+    preview = preview_column.container(border=True)
+    actions = preview_column.container(border=True)
+    tools = preview_column.container()
     with setup:
-        st.subheader("1. Pilih video")
+        st.subheader("Sumber dan pengaturan", anchor=False)
         source_name = st.selectbox("Sumber video", ["Unggah MP4", *local_videos])
         local = local_videos.get(source_name)
         uploaded = st.file_uploader("Unggah video MP4", type="mp4") if local is None else None
         if uploaded is not None:
             source_name = uploaded.name
         data = uploaded.getvalue() if uploaded is not None else None
-        st.subheader("2. Atur analisis")
-        tracker_name = st.selectbox("Tracker", ("ByteTrack", "DeepSORT (eksperimen)"))
-        deepsort_selected = tracker_name.startswith("DeepSORT")
-        deepsort_available = find_spec("deep_sort_realtime") is not None
-        deepsort_ready = deepsort_available
-        if deepsort_selected:
-            st.caption(
-                "DeepSORT memakai fitur tampilan MobileNetV2 pretrained ImageNet pada CPU. "
-                "Belum dilatih khusus identitas kendaraan dan dapat lebih lambat."
-            )
-            if not deepsort_available:
-                st.error("DeepSORT belum dipasang. Ikuti bagian DeepSORT pada README.")
-            else:
-                try:
-                    _, settings = load_tracker_settings(str(ROOT / "configs" / "deepsort.yaml"))
-                    if settings["tracker_type"] != "deepsort":
-                        raise ValueError("Konfigurasi bukan DeepSORT.")
-                except (ValueError, OSError):
-                    deepsort_ready = False
-                    st.error(
-                        "Konfigurasi DeepSORT belum bisa dipakai oleh proses aplikasi ini. "
-                        "Mulai ulang aplikasi setelah memperbarui kode; jika tetap gagal, "
-                        "periksa configs/deepsort.yaml."
-                    )
         profile = "Baseline"
         use_evaluation_settings = False
         if local is not None and local.name in DEMO_EXPERIMENTS:
@@ -406,34 +391,6 @@ def main() -> None:
                         config, counting_line=recovery.counting_line, preprocess=recovery.preprocess
                     )
 
-        with st.expander("Pengaturan model YOLO"):
-            model_choice = st.selectbox(
-                "Model deteksi", ("Sesuai profil", "YOLO11n — ringan", "YOLO11s — pembanding")
-            )
-            if model_choice != "Sesuai profil":
-                variant = "yolo11s" if model_choice.startswith("YOLO11s") else "yolo11n"
-                config = replace(config, model_weights=str(ROOT / "models" / f"{variant}.pt"))
-            size = st.selectbox("Ukuran masukan YOLO", ("Sesuai profil", 640, 960, 1280))
-            conf = st.number_input(
-                "Confidence minimum detektor", 0.01, 1.0, config.detector_conf, 0.01
-            )
-            config = replace(
-                config, imgsz=config.imgsz if size == "Sesuai profil" else size, detector_conf=conf
-            )
-            st.caption(
-                "YOLO11s dan masukan lebih besar membutuhkan waktu lebih lama. "
-                "Periksa crossing terhadap anotasi sebelum memilihnya. Confidence tinggi "
-                "dapat membuang deteksi lemah yang dibutuhkan ByteTrack."
-            )
-            model_path = Path(config.model_weights)
-            if model_path.parent == Path("."):
-                model_path = ROOT / "models" / model_path
-            model_ready = model_path.is_file()
-            if not model_ready:
-                st.warning(
-                    f"Bobot {model_path.name} belum tersedia. Siapkan melalui prepare-model "
-                    f"--variant {model_path.stem}, lalu mulai ulang aplikasi."
-                )
         source_version = (
             local.stat().st_mtime_ns if local else (uploaded.file_id if uploaded else "none")
         )
@@ -447,6 +404,9 @@ def main() -> None:
                 initial_line = saved_line
             initial_congestion = replace(initial_congestion, roi=saved_roi)
         traffic_enabled = st.checkbox("Aktifkan indikator macet", value=config.congestion.enabled)
+        heatmap_enabled = st.checkbox(
+            "Buat heatmap keberadaan kendaraan", value=config.heatmap_enabled
+        )
         congestion = replace(initial_congestion, enabled=traffic_enabled)
         numeric_roi = False
         if traffic_enabled:
@@ -497,18 +457,77 @@ def main() -> None:
                     except ValueError as error:
                         st.error(str(error))
                         congestion = None
-        heatmap_enabled = st.checkbox(
-            "Buat heatmap keberadaan kendaraan", value=config.heatmap_enabled
-        )
-        quality_enabled = st.checkbox(
-            "Sertakan pemeriksaan kualitas video", value=config.quality_check
-        )
+        with st.expander("Model dan pelacakan"):
+            tracker_name = st.selectbox("Tracker", ("ByteTrack", "DeepSORT (eksperimen)"))
+            deepsort_selected = tracker_name.startswith("DeepSORT")
+            deepsort_available = find_spec("deep_sort_realtime") is not None
+            deepsort_ready = deepsort_available
+            if deepsort_selected:
+                st.caption(
+                    "DeepSORT memakai fitur tampilan MobileNetV2 pretrained ImageNet pada CPU. "
+                    "Belum dilatih khusus identitas kendaraan dan dapat lebih lambat."
+                )
+                if not deepsort_available:
+                    st.error("DeepSORT belum dipasang. Ikuti bagian DeepSORT pada README.")
+                else:
+                    try:
+                        _, settings = load_tracker_settings(str(ROOT / "configs" / "deepsort.yaml"))
+                        if settings["tracker_type"] != "deepsort":
+                            raise ValueError("Konfigurasi bukan DeepSORT.")
+                    except (ValueError, OSError):
+                        deepsort_ready = False
+                        st.error(
+                            "Konfigurasi DeepSORT belum bisa dipakai oleh proses aplikasi ini. "
+                            "Mulai ulang aplikasi setelah memperbarui kode; jika tetap gagal, "
+                            "periksa configs/deepsort.yaml."
+                        )
+            model_choice = st.selectbox(
+                "Model deteksi", ("Sesuai profil", "YOLO11n — ringan", "YOLO11s — pembanding")
+            )
+            if model_choice != "Sesuai profil":
+                variant = "yolo11s" if model_choice.startswith("YOLO11s") else "yolo11n"
+                config = replace(config, model_weights=str(ROOT / "models" / f"{variant}.pt"))
+            size = st.selectbox("Ukuran masukan YOLO", ("Sesuai profil", 640, 960, 1280))
+            conf = st.number_input(
+                "Confidence minimum detektor", 0.01, 1.0, config.detector_conf, 0.01
+            )
+            config = replace(
+                config, imgsz=config.imgsz if size == "Sesuai profil" else size, detector_conf=conf
+            )
+            st.caption(
+                "YOLO11s dan masukan lebih besar membutuhkan waktu lebih lama. "
+                "Periksa crossing terhadap anotasi sebelum memilihnya. Confidence tinggi "
+                "dapat membuang deteksi lemah yang dibutuhkan ByteTrack."
+            )
+            model_path = Path(config.model_weights)
+            if model_path.parent == Path("."):
+                model_path = ROOT / "models" / model_path
+            model_ready = model_path.is_file()
+            if not model_ready:
+                st.warning(
+                    f"Bobot {model_path.name} belum tersedia. Siapkan melalui prepare-model "
+                    f"--variant {model_path.stem}, lalu mulai ulang aplikasi."
+                )
+            mode = config.preprocess.mode
+            if use_evaluation_settings:
+                st.caption(f"Prapemrosesan profil: {MODES[mode]}")
+            else:
+                mode = st.selectbox(
+                    "Prapemrosesan", PREPROCESS_MODES, format_func=MODES.__getitem__
+                )
+            quality_enabled = st.checkbox(
+                "Sertakan pemeriksaan kualitas video", value=config.quality_check
+            )
+
+    ready = False
+    zones = ()
+    with preview:
+        st.subheader("Pratinjau dan garis hitung", anchor=False)
         if use_evaluation_settings:
-            mode, line = config.preprocess.mode, config.counting_line
+            line = config.counting_line
             editor_mode = "Geser di gambar" if traffic_enabled else "Koordinat angka"
-            st.caption(f"{MODES[mode]} · Garis dikunci sesuai evaluasi klip ini.")
+            st.caption("Profil ini memakai garis dari evaluasi klip.")
         else:
-            mode = st.selectbox("Prapemrosesan", PREPROCESS_MODES, format_func=MODES.__getitem__)
             editor_mode = st.radio(
                 "Pengaturan garis", ("Geser di gambar", "Koordinat angka"), horizontal=True
             )
@@ -531,12 +550,11 @@ def main() -> None:
                     line = None
                     st.error(str(error))
 
-    ready = False
-    zones = ()
-    with preview:
-        st.subheader("Preview garis")
         if local is None and data is None:
-            st.info("Pilih rekaman dari kamera diam untuk menempatkan garis di kedua lajur.")
+            with st.container(key="vehicle_empty_preview"):
+                st.markdown("### Mulai dengan video MP4")
+                st.write("Pilih video yang tersedia atau unggah rekaman hingga 100 MB.")
+                st.caption("Setelah video terbaca, atur garis hitung pada pratinjau.")
         else:
             try:
                 metadata, image = _preview(local, data, local.stat().st_mtime_ns if local else None)
@@ -581,30 +599,44 @@ def main() -> None:
                         channels="BGR",
                         width="stretch",
                     )
-                if traffic_enabled and congestion is not None:
-                    zones = configure_zones(
-                        image, replace(config, congestion=congestion), editor_key
-                    )
-                ready = line is not None and congestion is not None and zones is not None
-                if st.button("Periksa kualitas video sebelum analisis"):
-                    with st.spinner("Memeriksa histogram, ketajaman, frekuensi, dan fitur latar"):
-                        report, panel = _quality_preview(
-                            local, data, source_version, replace(config, traffic_zones=zones or ())
+                with tools:
+                    if traffic_enabled and congestion is not None:
+                        zones = configure_zones(
+                            image, replace(config, congestion=congestion), editor_key
                         )
-                    show_quality(report, panel)
+                    ready = line is not None and congestion is not None and zones is not None
+                    if st.button("Periksa kualitas video sebelum analisis"):
+                        with st.spinner("Memeriksa kualitas citra dan fitur latar"):
+                            report, panel = _quality_preview(
+                                local,
+                                data,
+                                source_version,
+                                replace(config, traffic_zones=zones or ()),
+                            )
+                        show_quality(report, panel)
             except (ValueError, OSError, cv2.error) as error:
                 st.error(f"Video tidak dapat dibaca. {error}")
 
-    short_seconds = setup.select_slider("Durasi uji singkat (detik)", options=[3, 5, 10], value=5)
+    actions.subheader("Jalankan analisis", anchor=False)
+    time_control, run_control = actions.columns([1, 1])
+    short_seconds = time_control.select_slider(
+        "Durasi uji singkat (detik)", options=[3, 5, 10], value=5
+    )
     disabled = (
         not ready or not model_ready or has_active or (deepsort_selected and not deepsort_ready)
     )
-    short = setup.button("Uji singkat", disabled=disabled)
-    full = setup.button(
+    short = run_control.button("Uji singkat", type="primary", disabled=disabled, width="stretch")
+    full = run_control.button(
         "Mulai analisis",
-        type="primary",
         disabled=disabled,
+        width="stretch",
     )
+    if has_active:
+        actions.caption("Sesi ini punya pekerjaan aktif. Pantau progres di tab Antrean.")
+    elif not model_ready or (deepsort_selected and not deepsort_ready):
+        actions.caption("Buka Model dan pelacakan untuk memeriksa kesiapan model dan tracker.")
+    elif not ready:
+        actions.caption("Siapkan video dan garis hitung untuk mulai.")
     actual_config = (
         replace(
             config,
@@ -622,7 +654,6 @@ def main() -> None:
         else None
     )
     if short or full:
-        st.session_state.pop("result", None)
         try:
             with _source_file(local, data) as source:
                 job_id = queue.enqueue(
@@ -634,10 +665,10 @@ def main() -> None:
                 )
             st.session_state.pending_job = job_id
             queue.ensure_worker()
-            st.success("Video masuk antrean. Progres dan tombol batal tersedia di bawah.")
+            open_view(QUEUE)
         except (ValueError, OSError, RuntimeError, cv2.error) as error:
-            st.error(f"Tidak dapat memasukkan video ke antrean. {error}")
-    with setup.expander("Perbandingan metode"):
+            actions.error(f"Tidak dapat memasukkan video ke antrean. {error}")
+    with st.expander("Perbandingan metode"):
         compare_kind = st.radio(
             "Yang dibandingkan",
             (
@@ -706,35 +737,68 @@ def main() -> None:
                     )
                 st.session_state.pending_job = job_id
                 queue.ensure_worker()
-                st.success("Perbandingan masuk antrean bersama.")
+                open_view(QUEUE)
             except (ValueError, OSError, RuntimeError, ImportError) as error:
                 st.error(f"Perbandingan gagal. {error}")
-    if queue.owned(owner):
-        show_jobs(str(queue.root), str(ROOT), owner)
+
+
+def _show_results() -> None:
+    if "result" not in st.session_state and "comparison" not in st.session_state:
+        with st.container(border=True):
+            st.subheader("Belum ada hasil analisis", anchor=False)
+            st.write("Jalankan video baru atau buka hasil tersimpan dari Riwayat.")
+            if st.button("Siapkan video", key="setup_from_results"):
+                open_view(SETUP)
+        return
     if "comparison" in st.session_state and st.session_state.comparison["results"]:
         batch = st.session_state.comparison
-        show_comparison(batch)
-        selected = st.selectbox(
-            "Buka hasil perbandingan",
-            range(len(batch["results"])),
-            format_func=lambda i: (
-                f"{batch['rows'][i].get('model', 'YOLO')} - "
-                f"{batch['rows'][i]['preprocess']} - {batch['rows'][i]['tracker']} - "
-                f"{batch['rows'][i]['status']}"
-            ),
-        )
-        if st.button("Tampilkan hasil ini"):
-            payload = dict(batch["results"][selected])
-            payload["summary"] = CountSummary(**payload["summary"])
-            row = batch["rows"][selected]
-            st.session_state.result = (
-                RunResult(**payload),
-                batch["source_name"],
-                row["preprocess"],
-                f"Perbandingan - {row['tracker']}",
+        with st.expander("Perbandingan terakhir", expanded="result" not in st.session_state):
+            show_comparison(batch)
+            selected = st.selectbox(
+                "Buka hasil perbandingan",
+                range(len(batch["results"])),
+                format_func=lambda i: (
+                    f"{batch['rows'][i].get('model', 'YOLO')} - "
+                    f"{batch['rows'][i]['preprocess']} - {batch['rows'][i]['tracker']} - "
+                    f"{batch['rows'][i]['status']}"
+                ),
             )
+            if st.button("Tampilkan hasil ini"):
+                payload = dict(batch["results"][selected])
+                payload["summary"] = CountSummary(**payload["summary"])
+                row = batch["rows"][selected]
+                st.session_state.result = (
+                    RunResult(**payload),
+                    batch["source_name"],
+                    row["preprocess"],
+                    f"Perbandingan - {row['tracker']}",
+                )
     if "result" in st.session_state:
         _show_result(*st.session_state.result)
+
+
+def main() -> None:
+    st.set_page_config(page_title="Vehicle Tracking", layout="wide")
+    show_header()
+    owner = st.session_state.setdefault("job_owner", uuid4().hex)
+    queue = JobQueue(ROOT / "outputs" / "jobs", ROOT)
+    owned_jobs = queue.owned(owner)
+    setup, jobs, results, history = workspace_tabs()
+    with setup:
+        _show_setup(queue, owner, any(job["status"] in ACTIVE for job in owned_jobs))
+    with jobs:
+        if owned_jobs:
+            show_jobs(str(queue.root), str(ROOT), owner)
+        else:
+            with st.container(border=True):
+                st.subheader("Antrean kosong", anchor=False)
+                st.write("Pekerjaan muncul di sini setelah kamu mengirim video untuk dianalisis.")
+                if st.button("Siapkan video", key="setup_from_queue"):
+                    open_view(SETUP)
+    with results:
+        _show_results()
+    with history:
+        _show_history(queue, owned_jobs)
 
 
 if __name__ == "__main__":

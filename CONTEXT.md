@@ -409,11 +409,12 @@ Contoh pesan yang harus informatif: video tidak dapat dibaca, FPS tidak valid, g
 
 ### 13.1 Pengaturan dan pemeriksaan hasil
 
+- Antarmuka Streamlit memakai empat tab utama **Siapkan analisis**, **Antrean**, **Hasil**, dan **Riwayat**. Pratinjau garis dan tombol mulai berada di satu kolom. Saat pekerjaan berakhir dan tab Antrean masih aktif, UI membuka Hasil.
 - Mode **Kustom** menyediakan drag P1/P2 atau kontrol angka. Profil evaluasi yang dibekukan mempertahankan garisnya. Area jalan indikator macet dapat digeser melalui dua sudut biru atau diatur dengan angka.
 - **Uji singkat** menganalisis 3, 5, atau 10 detik awal. Periksa garis, hasil tracking, dan area sebelum menjalankan seluruh video.
 - **Perbandingan metode** menjalankan none/CLAHE, ByteTrack/DeepSORT, atau empat kombinasi secara berurutan dengan sumber, garis, ROI, serta batas waktu sama. Selisih jumlah dan processing FPS belum menunjukkan akurasi; gunakan GT yang sesuai untuk evaluasi run penuh.
-- Tab **Grafik waktu**, **Lalu lintas**, dan **Diagnostik** memakai artefak run yang sama. Tab **Audit crossing** menyediakan catatan sesuai, hitung ganda, salah kelas, terlewat, atau meragukan. Catatan tidak menulis ulang `events.csv` dan tidak otomatis menjadi GT.
-- **Pengaturan model YOLO** memilih profil asal, YOLO11n, atau YOLO11s, dengan kontrol ukuran masukan dan confidence. Pilihan model tidak mengganti garis, ROI, tracker, dan aturan counting. Bobot harus disiapkan secara eksplisit; UI tidak memulai unduhan diam-diam.
+- **Rekap** memuat hitungan dan grafik waktu. **Lalu lintas**, **Heatmap**, **Bukti materi**, serta **Audit crossing** membuka tab langsung di Hasil. Diagnostik berada di Bukti materi. Semua memakai artefak run yang sama. Audit menyediakan catatan sesuai, hitung ganda, salah kelas, terlewat, atau meragukan. Catatan tidak menulis ulang `events.csv` dan tidak otomatis menjadi GT.
+- **Model dan pelacakan** menyediakan tracker, prapemrosesan, pemeriksaan kualitas, dan pilihan model sesuai profil, YOLO11n, atau YOLO11s dengan kontrol ukuran masukan dan confidence. Pilihan model tidak mengganti garis, ROI, tracker, dan aturan counting. Bobot harus disiapkan secara eksplisit; UI tidak memulai unduhan diam-diam.
 - **Riwayat analisis** membaca run tersimpan di `outputs/`, maksimal 100 terbaru, dengan pencarian nama video/ID. Membuka hasil tidak menjalankan inferensi atau mengubah count; hasil gagal tetap diberi label gagal dan hasil singkat tetap diberi label singkat. Metadata sumber mempertahankan nama unggahan untuk tampilan tanpa memakainya sebagai path kerja.
 - **Lalu lintas** menyediakan daftar kejadian indikasi macet dan pemutar dari dekat awal konfirmasi, beserta frame bukti. Grafik menggunakan nama kolom yang mudah dipahami, sedangkan kontrak CSV tetap memakai nama teknis yang stabil.
 

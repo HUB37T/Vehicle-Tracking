@@ -96,8 +96,10 @@ def test_app_short_preview_traffic_review_and_comparison(dashboard_project, monk
     next(w for w in app.checkbox if w.label == "Aktifkan indikator macet").check().run()
     assert not app.exception
     next(w for w in app.button if w.label == "Uji singkat").click().run()
+    assert app.session_state["vehicle_workspace"] == "Antrean"
     finish_app_job(app, root)
     assert not app.exception
+    assert app.session_state["vehicle_workspace"] == "Hasil"
     result = app.session_state["result"][0]
     info = json.loads(Path(result.artifact_paths["run_json"]).read_text())
     assert info["processed_frames"] == 50
@@ -114,6 +116,7 @@ def test_app_short_preview_traffic_review_and_comparison(dashboard_project, monk
     next(w for w in app.checkbox if w.label == "Tampilkan riwayat tersimpan").check().run()
     next(w for w in app.button if w.label == "Buka hasil tersimpan").click().run()
     assert not app.exception
+    assert app.session_state["vehicle_workspace"] == "Hasil"
     assert app.session_state["result"][0].run_id == result.run_id
     monkeypatch.setattr(experiments, "process_video", fixture_process)
     next(w for w in app.button if w.label == "Bandingkan metode").click().run()
@@ -309,6 +312,8 @@ def test_zones_heatmap_quality_and_manual_dataset_in_ui(dashboard_project, monke
     assert len(info["traffic_zones"]) == 2
     assert Path(result.artifact_paths["heatmap_png"]).is_file()
     assert Path(result.artifact_paths["quality_png"]).is_file()
+    heatmap = next(tab for tab in app.tabs if tab.label == "Heatmap")
+    assert heatmap.get("image")
     monkeypatch.setattr(
         dataset_dashboard,
         "render_shapes",
