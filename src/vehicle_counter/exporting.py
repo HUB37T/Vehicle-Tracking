@@ -86,3 +86,16 @@ def export_counts(
                     }
                 )
     return {"events_csv": str(events_path), "counts_csv": str(counts_path)}
+
+
+def export_lane_counts(
+    output_dir: Path, run_id: str, rows: Iterable[dict[str, str | int | None]]
+) -> dict[str, str]:
+    path = output_dir / "lane_counts.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=("run_id", "zone_id", "zone_name", *VEHICLE_CLASSES, "total")
+        )
+        writer.writeheader()
+        writer.writerows({"run_id": run_id, **row} for row in rows)
+    return {"lane_counts_csv": str(path)}

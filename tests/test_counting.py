@@ -3,7 +3,12 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from vehicle_counter.contracts import DIRECTIONS, VEHICLE_CLASSES, CountingLineConfig
+from vehicle_counter.contracts import (
+    DIRECTIONS,
+    VEHICLE_CLASSES,
+    CountingLineConfig,
+    TrafficZoneConfig,
+)
 from vehicle_counter.counting import VehicleCounter
 
 
@@ -80,6 +85,43 @@ def test_neutral_path_uses_actual_segments_instead_of_straight_shortcut(
 def test_crossing_flag_survives_neutral_frames(make_counter, make_observation):
     counter = make_counter()
     assert len(feed(counter, make_observation, [30, 49.5, 50.5, 50, 70])) == 1
+
+
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_lanes_use_the_crossing_point_and_attribute_overlap_once(
+    make_counter, make_observation, reverse_order
+):
+    left = TrafficZoneConfig(
+        "left", "Lajur kiri", ((0.3, 0.45), (0.6, 0.45), (0.6, 0.55), (0.3, 0.55))
+    )
+    right = TrafficZoneConfig(
+        "right", "Lajur kanan", ((0.45, 0.45), (0.75, 0.45), (0.75, 0.55), (0.45, 0.55))
+    )
+    zones = (right, left) if reverse_order else (left, right)
+    counter = make_counter(traffic_zones=zones)
+    tracks = (
+        ("car", [(45, 30), (50, 48), (50, 50), (70, 65)]),  # overlap at x=50
+        ("motorcycle", [(68, 70), (68, 60), (68, 50), (68, 40)]),  # right, B to A
+        ("bus", [(20, 40), (20, 45), (20, 50), (20, 56)]),  # line endpoint outside all zones
+        ("truck", [(40, 30), (48, 50), (61, 50), (70, 60)]),  # last contact in right lane
+        ("bus", [(60, 30), (60, 40), (60, 50), (60, 60)]),  # on left boundary and in right
+    )
+    for frame in range(4):
+        counter.update(
+            make_observation(
+                frame, path[frame][1], x=path[frame][0], track_id=track_id, class_name=vehicle
+            )
+            for track_id, (vehicle, path) in enumerate(tracks, 1)
+        )
+
+    rows = counter.lane_counts()
+    assert [row["zone_id"] for row in rows] == [zones[0].zone_id, zones[1].zone_id, None]
+    by_zone = {row["zone_id"]: row for row in rows}
+    assert by_zone[zones[0].zone_id]["car"] == by_zone[zones[0].zone_id]["bus"] == 1
+    assert by_zone[zones[1].zone_id]["car"] == by_zone[zones[1].zone_id]["bus"] == 0
+    assert by_zone["right"]["motorcycle"] == by_zone["right"]["truck"] == 1
+    assert by_zone[None]["bus"] == by_zone[None]["total"] == 1
+    assert sum(row["total"] for row in rows) == counter.summary().total == len(counter.events) == 5
 
 
 def test_insufficient_hits_do_not_retroactively_count(make_counter, make_observation):

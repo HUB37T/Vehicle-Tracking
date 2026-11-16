@@ -18,7 +18,7 @@ from vehicle_counter.contracts import ProgressUpdate, RunConfig, RunResult, Vide
 from vehicle_counter.counting import VehicleCounter
 from vehicle_counter.crossing_audit import audit_crossings, write_crossing_audit
 from vehicle_counter.execution import AnalysisCancelled, check_cancel
-from vehicle_counter.exporting import export_counts, file_sha256, write_json
+from vehicle_counter.exporting import export_counts, export_lane_counts, file_sha256, write_json
 from vehicle_counter.heatmap import PresenceHeatmap
 from vehicle_counter.preprocessing import preprocess_frame
 from vehicle_counter.run_analysis import CrossingDiagnostics, export_analysis, export_zone_analysis
@@ -390,6 +390,8 @@ def process_video(
                 evidence_path = output_dir / "process_evidence.png"
                 write_evidence(evidence_path, evidence)
                 artifacts["process_evidence"] = str(evidence_path)
+            if config.traffic_zones:
+                artifacts.update(export_lane_counts(output_dir, run_id, counter.lane_counts()))
             manifest["status"] = "completed"
         except BaseException as error:
             manifest["status"] = "cancelled" if isinstance(error, AnalysisCancelled) else "failed"

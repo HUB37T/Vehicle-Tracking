@@ -5,6 +5,8 @@ from math import hypot
 
 from vehicle_counter.contracts import CountingLineConfig, Point, _integer
 
+_INTERSECTION_TOLERANCE = 1e-7
+
 
 def _cross(a: Point, b: Point, c: Point) -> float:
     return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
@@ -12,7 +14,7 @@ def _cross(a: Point, b: Point, c: Point) -> float:
 
 def segments_intersect(a: Point, b: Point, c: Point, d: Point) -> bool:
     """Include touches at segment endpoints; never extend either segment."""
-    tolerance = 1e-7
+    tolerance = _INTERSECTION_TOLERANCE
 
     def sign(value: float) -> int:
         return 1 if value > tolerance else -1 if value < -tolerance else 0
@@ -68,3 +70,23 @@ class PixelCountingLine:
 
     def intersects_path(self, previous: Point, current: Point) -> bool:
         return segments_intersect(previous, current, self.p1, self.p2)
+
+    def path_intersection(self, previous: Point, current: Point) -> Point | None:
+        """Return the last point shared by the finite line and the observed segment."""
+        if not self.intersects_path(previous, current):
+            return None
+        start = _cross(self.p1, self.p2, previous)
+        end = _cross(self.p1, self.p2, current)
+        if start == end or max(abs(start), abs(end)) <= _INTERSECTION_TOLERANCE:
+            x, y = current
+        else:
+            fraction = min(1.0, max(0.0, start / (start - end)))
+            x = previous[0] + fraction * (current[0] - previous[0])
+            y = previous[1] + fraction * (current[1] - previous[1])
+        dx = self.p2[0] - self.p1[0]
+        dy = self.p2[1] - self.p1[1]
+        length = hypot(dx, dy)
+        ux, uy = dx / length, dy / length
+        offset = (x - self.p1[0]) * ux + (y - self.p1[1]) * uy
+        along = min(length, max(0.0, offset))
+        return (self.p1[0] + along * ux, self.p1[1] + along * uy)

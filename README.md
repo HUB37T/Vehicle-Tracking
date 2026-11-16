@@ -173,9 +173,11 @@ Untuk video lain, `--max-seconds 5 --congestion-roi 0.05 0.45 0.95 0.95` mengakt
 
 ### Zona per lajur dan heatmap
 
-Setelah indikator macet aktif, buka **Zona macet per lajur/arah**, centang analisis beberapa zona, pilih 1–4 zona, dan beri nama sesuai jalan yang diamati. Geser titik poligon; tambah/hapus titik jika perlu mengikuti perspektif lajur. Poligon 3–12 titik tidak boleh bersilangan. Setiap zona memiliki riwayat gerak dan status sendiri, sehingga kendaraan bergerak pada lajur lain tidak dicampur ke indikator zona tersebut. Zona yang tumpang tindih boleh mengamati kendaraan sama; jangan menjumlahkannya sebagai kendaraan unik.
+Buka **Zona per lajur/arah**, centang **Analisis beberapa zona jalan**, pilih 1–4 zona, lalu beri nama sesuai lajur atau arah. Atur titik poligon agar tiap zona mencakup bagian garis hitung yang dilalui kendaraan di lajur tersebut. Poligon memakai 3–12 titik dan sisinya tidak boleh bersilangan.
 
-Tab **Lalu lintas** menampilkan status/episode per zona dan CSV `traffic_zones.csv`/`traffic_zone_episodes.csv`. Area persegi panjang utama tetap ditampilkan terpisah. Profil **Pemulihan crossing** untuk klip `vehicles-3-bytetrack-test.mp4` kini menggunakan preset [dua zona contoh](configs/experiments/vehicles-3-coursework.yaml); bentuknya perlu disesuaikan untuk kamera lain.
+**Hasil → Per lajur** menampilkan jumlah mobil, motor, bus, dan truk yang melewati garis di tiap zona. Pakai **Unduhan → Unduh hitungan per lajur** untuk mendapatkan `lane_counts.csv`. Saat titik potong masuk beberapa zona, crossing diberikan satu kali ke zona dengan nomor prioritas terkecil. Crossing yang tidak masuk zona tampil di **Di luar zona** dan tetap masuk total. Run lama perlu dianalisis ulang untuk membuat rekap ini.
+
+Jika indikator macet aktif, **Lalu lintas** juga menampilkan status per zona dan menyediakan `traffic_zones.csv` serta `traffic_zone_episodes.csv`. Pemantauan per zona mengamati kendaraan di dalam setiap poligon, termasuk kendaraan yang berada di area tumpang tindih. Area persegi panjang utama tetap ditampilkan terpisah. Profil **Pemulihan crossing** untuk `vehicles-3-bytetrack-test.mp4` menyediakan [dua zona contoh](configs/experiments/vehicles-3-coursework.yaml).
 
 Centang **Buat heatmap keberadaan kendaraan**, lalu buka **Hasil → Heatmap** setelah analisis. Heatmap memakai anchor hasil tracking yang sama, dengan penambahan `1/FPS` detik per sel yang teramati setiap frame. `heatmap.npz` menyimpan grid mentah 128×128, `heatmap.json` menjelaskan satuan/skala, dan `heatmap.png` menampilkan warna relatif pada frame sumber. Gaussian smoothing hanya memperhalus tampilan. Warna hangat bukan bukti macet atau jumlah kendaraan unik. CLI: tambahkan `--heatmap`.
 

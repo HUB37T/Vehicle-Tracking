@@ -13,6 +13,7 @@ from vehicle_counter.contracts import (  # noqa: E402
     PreprocessConfig,
     RunConfig,
     TrackObservation,
+    TrafficZoneConfig,
     VideoMetadata,
 )
 from vehicle_counter.pipeline import process_video  # noqa: E402
@@ -67,9 +68,19 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
         if update.preview_frame_bgr is not None:
             update.preview_frame_bgr[:] = 255
 
+    config = RunConfig(
+        traffic_zones=(
+            TrafficZoneConfig(
+                "first", "Lajur A", ((0.3, 0.55), (0.6, 0.55), (0.6, 0.65), (0.3, 0.65))
+            ),
+            TrafficZoneConfig(
+                "second", "Lajur B", ((0.4, 0.55), (0.8, 0.55), (0.8, 0.65), (0.4, 0.65))
+            ),
+        )
+    )
     result = process_video(
         synthetic_video,
-        RunConfig(),
+        config,
         tmp_path / "outputs",
         on_progress,
         tracker_factory=SyntheticTracker,
@@ -106,6 +117,13 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
     assert events[0]["timestamp_seconds"] == "0.8"
     assert len(counts) == 8
     assert sum(int(row["count"]) for row in counts) == len(events)
+    with Path(result.artifact_paths["lane_counts_csv"]).open(encoding="utf-8") as handle:
+        lanes = list(csv.DictReader(handle))
+    assert [(row["zone_id"], row["car"], row["total"]) for row in lanes] == [
+        ("first", "1", "1"),
+        ("second", "0", "0"),
+        ("", "0", "0"),
+    ]
     with Path(result.artifact_paths["crossing_audit"]).open(encoding="utf-8") as handle:
         audit = list(csv.DictReader(handle))
     assert len(audit) == len(events) == manifest["crossing_audit"]["events"]

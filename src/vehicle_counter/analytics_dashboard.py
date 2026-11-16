@@ -13,16 +13,15 @@ from vehicle_counter.traffic import TRAFFIC_LABELS
 
 
 def configure_zones(image, config, key):
-    with st.expander("Zona macet per lajur/arah"):
+    with st.expander("Zona per lajur/arah"):
         enabled = st.checkbox(
             "Analisis beberapa zona jalan", value=bool(config.traffic_zones), key=f"{key}-multi"
         )
         if not enabled:
             return ()
         st.caption(
-            "Beri nama sesuai lajur/arah nyata. Sisi A/B garis tidak otomatis "
-            "menjadi nama arah jalan. Zona yang tumpang tindih dapat mengamati"
-            " kendaraan yang sama."
+            "Beri nama sesuai lajur atau arah jalan. Untuk hitungan per lajur, gambar zona "
+            "hingga mencakup garis hitung. Zona pertama di daftar diprioritaskan saat bertumpuk."
         )
         count = st.number_input(
             "Jumlah zona", 1, 4, max(1, len(config.traffic_zones) or 2), key=f"{key}-count"
@@ -75,7 +74,12 @@ def configure_zones(image, config, key):
             {"zone_id": z.zone_id, "name": z.name, "polygon": z.polygon} for z in zones
         ]
         st.dataframe(
-            pd.DataFrame([{"Zona": z.name, "Jumlah titik": len(z.polygon)} for z in zones]),
+            pd.DataFrame(
+                [
+                    {"Prioritas": number, "Zona": z.name, "Jumlah titik": len(z.polygon)}
+                    for number, z in enumerate(zones, 1)
+                ]
+            ),
             hide_index=True,
         )
         return tuple(zones)

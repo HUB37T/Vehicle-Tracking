@@ -18,6 +18,7 @@ from vehicle_counter.contracts import (
 )
 from vehicle_counter.crossing_duplicates import CrossingDuplicates
 from vehicle_counter.geometry import PixelCountingLine
+from vehicle_counter.polygons import polygon_contains
 
 TruckReview = Callable[[NDArray[np.uint8], TrackObservation], bool]
 
@@ -27,7 +28,7 @@ class _TrackState:
     last_seen: float | None = None
     last_anchor: Point | None = None
     stable_side: str | None = None
-    crossed_segment: bool = False
+    crossing_point: Point | None = None
     hits: int = 0
     class_hits: dict[str, int] = field(default_factory=dict)
     class_confidence: dict[str, float] = field(default_factory=dict)
@@ -35,7 +36,7 @@ class _TrackState:
     def restart_motion(self) -> None:
         self.last_anchor = None
         self.stable_side = None
-        self.crossed_segment = False
+        self.crossing_point = None
         self.hits = 0
 
     def voted_class(self) -> str:
@@ -58,23 +59,43 @@ class VehicleCounter:
         self.run_id = run_id
         self.config = config
         self.line = PixelCountingLine.from_config(config.counting_line, width=width, height=height)
+        self._frame_span = (width - 1, height - 1)
         self._duplicates = CrossingDuplicates(self.line) if config.deduplicate_crossings else None
         self._tracks: dict[int, _TrackState] = {}
         self._counted: set[int] = set()
-        self._events: list[CountEvent] = []
+        self._crossings: list[tuple[CountEvent, Point]] = []
         self._counts = {name: dict.fromkeys(DIRECTIONS, 0) for name in VEHICLE_CLASSES}
         self._last_frame = -1
         self._last_timestamp = -1.0
 
     @property
     def events(self) -> tuple[CountEvent, ...]:
-        return tuple(self._events)
+        return tuple(event for event, _ in self._crossings)
 
     def summary(self) -> CountSummary:
         return CountSummary(
-            total=len(self._events),
+            total=len(self._crossings),
             by_class_direction={name: dict(values) for name, values in self._counts.items()},
         )
+
+    def lane_counts(self) -> list[dict[str, str | int | None]]:
+        """Attribute each committed crossing to the first matching zone."""
+        zones = self.config.traffic_zones
+        names: dict[str | None, str] = {zone.zone_id: zone.name for zone in zones}
+        names[None] = "Di luar zona"
+        counts = {zone_id: dict.fromkeys(VEHICLE_CLASSES, 0) for zone_id in names}
+        for event, point in self._crossings:
+            zone_id = next(
+                (zone.zone_id for zone in zones if polygon_contains(zone.polygon, point)), None
+            )
+            counts[zone_id][event.class_name] += 1
+        rows = []
+        for zone_id, name in names.items():
+            bucket = counts[zone_id]
+            rows.append(
+                {"zone_id": zone_id, "zone_name": name, **bucket, "total": sum(bucket.values())}
+            )
+        return rows
 
     def update(
         self,
@@ -99,8 +120,9 @@ class VehicleCounter:
                 continue
             if observation.track_id in self._counted:
                 continue
-            event = self._observe(observation)
-            if event is not None:
+            crossing = self._observe(observation)
+            if crossing is not None:
+                event, point = crossing
                 self._counted.add(event.track_id)
                 if (
                     self._duplicates is not None
@@ -115,7 +137,9 @@ class VehicleCounter:
                     and review_truck(frame_bgr, observation)
                 ):
                     event = replace(event, class_name="car")
-                self._events.append(event)
+                x, y = point
+                width_span, height_span = self._frame_span
+                self._crossings.append((event, (x / width_span, y / height_span)))
                 self._counts[event.class_name][event.direction] += 1
                 new_events.append(event)
         return new_events
@@ -139,7 +163,7 @@ class VehicleCounter:
                 raise ValueError("Satu Track ID hanya boleh memiliki satu observasi per frame.")
             ids.add(item.track_id)
 
-    def _observe(self, observation: TrackObservation) -> CountEvent | None:
+    def _observe(self, observation: TrackObservation) -> tuple[CountEvent, Point] | None:
         state = self._tracks.setdefault(observation.track_id, _TrackState())
         if (
             state.last_seen is not None
@@ -156,13 +180,15 @@ class VehicleCounter:
         anchor = observation.anchor
         side = self.line.side(anchor)
         if state.last_anchor is not None:
-            state.crossed_segment |= self.line.intersects_path(state.last_anchor, anchor)
-        event = None
+            point = self.line.path_intersection(state.last_anchor, anchor)
+            if point is not None:
+                state.crossing_point = point
+        crossing = None
         if side is not None:
             if (
                 state.stable_side is not None
                 and side != state.stable_side
-                and state.crossed_segment
+                and state.crossing_point is not None
                 and state.hits >= self.config.min_track_hits
             ):
                 event = CountEvent(
@@ -174,8 +200,9 @@ class VehicleCounter:
                     class_name=state.voted_class(),
                     direction=f"{state.stable_side}_TO_{side}",
                 )
+                crossing = (event, state.crossing_point)
             state.stable_side = side
-            state.crossed_segment = False
+            state.crossing_point = None
         state.last_anchor = anchor
         state.last_seen = observation.timestamp_seconds
-        return event
+        return crossing

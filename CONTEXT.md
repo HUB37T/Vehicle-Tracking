@@ -71,6 +71,7 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Pekerjaan analisis | Permintaan pemrosesan yang masuk antrean bersama. Satu pekerjaan dapat berisi satu run atau beberapa run perbandingan, dengan hasil serta status tersimpan. |
 | Pembatalan | Permintaan menghentikan pekerjaan setelah operasi/frame yang sedang berjalan. Hitungan parsial tetap diberi label belum lengkap dan tidak menjadi hasil akhir. |
 | Zona lalu lintas | Area jalan bernama, dapat berupa poligon, dengan indikator kepadatan/gerak sendiri. Nama lajur/arah diberikan pengguna, bukan disimpulkan otomatis dari sisi garis. |
+| Hitungan per lajur | Rekap crossing menurut kelas kendaraan dan zona yang mencakup titik potong lintasannya dengan garis hitung. |
 | Heatmap keberadaan | Akumulasi waktu observasi anchor kendaraan pada lokasi citra; warna menunjukkan keberadaan teramati, bukan bukti macet atau jumlah kendaraan fisik unik. |
 | Pemeriksaan kualitas | Pengukuran awal pencahayaan, ketajaman, dan gerak latar video untuk memberi petunjuk sebelum analisis, bukan skor akurasi model. |
 | Label pelatihan manual | Kotak kendaraan dan kelas yang diberikan pemeriksa pada frame sumber untuk calon dataset fine-tuning; berbeda dari catatan crossing dan prediksi model. |
@@ -185,7 +186,7 @@ Event diterbitkan hanya jika seluruh kondisi berikut terpenuhi:
 
 Observasi dalam zona netral menjaga sisi stabil sebelumnya. Ketika kembali ke sisi stabil yang sama, perbarui titik acuan dan hapus kandidat crossing yang belum selesai. Ketika mencapai sisi berlawanan, selesaikan pemeriksaan crossing lalu jadikan sisi tersebut acuan berikutnya, baik event diterima maupun ditolak.
 
-Perpotongan dapat diakumulasi sebagai flag dari segmen antarobservasi selama transisi; tidak perlu menyimpan lintasan tak terbatas ketika kendaraan berhenti pada garis. Sampel track prediksi tanpa observasi deteksi yang diasosiasikan tidak dipakai untuk menerbitkan event.
+Counter mempertahankan titik potong terakhir dari segmen antarobservasi selama transisi. Titik itu digunakan untuk rekap per lajur saat crossing diterima. Sampel track prediksi tanpa observasi deteksi yang diasosiasikan tidak dipakai untuk menerbitkan event.
 
 ### 7.3 Kebijakan satu kali hitung
 
@@ -440,6 +441,8 @@ Tombol batal hanya mengendalikan pekerjaan sesi yang mengirimnya. Pembatalan men
 
 `traffic_zones` berisi maksimal empat `TrafficZoneConfig` dengan ID unik, nama, dan poligon sederhana 3–12 titik ternormalisasi. Poligon bersilangan/luas nyaris nol ditolak. Setiap zona memakai anchor aktual, riwayat gerak, keterisian mask, serta state macet sendiri. Raster gabungan box dipotong mask poligon; denominator adalah area mask zona. `traffic_zones.csv` dan `traffic_zone_episodes.csv` menyertakan ID/nama zona, dan `run.json.traffic_zones` menyimpan ringkasan. Area persegi panjang utama tetap dianalisis terpisah. Zona tumpang tindih bisa mengamati kendaraan sama; jangan menjumlahkannya sebagai kendaraan unik atau count crossing.
 
+**Per lajur** tersedia untuk run dengan zona, termasuk saat indikator macet dimatikan. Setiap crossing yang diterima masuk ke satu zona berdasarkan titik potong terakhir pada lintasan anchor. Batas poligon termasuk zona. Jika beberapa zona mencakup titik itu, gunakan zona pertama menurut urutan pengaturan. Crossing di luar semua zona masuk baris **Di luar zona**. Jumlah semua baris, termasuk baris ini, sama dengan total crossing.
+
 `heatmap_enabled` default `false`. Grid 128×128 menambah `1/FPS` detik pada sel anchor yang teramati; sel sama hanya ditambah sekali per frame walaupun ada beberapa ID. `heatmap.npz` menyimpan sel mentah, `heatmap.json` definisi satuan/skala, dan `heatmap.png` overlay frame sumber. Gaussian 5×5 dan normalisasi warna dipakai hanya untuk tampilan relatif dalam run, bukan input detektor. Heatmap bukan peta kecepatan fisik, jaminan macet, atau hitungan kendaraan unik.
 
 ### 13.5 Pemeriksaan kualitas dan prapemrosesan
@@ -526,6 +529,7 @@ Counter diuji dengan observasi sintetis agar tidak bergantung pada unduhan model
 - Gap di atas batas mereset riwayat gerak, sedangkan catatan sudah dihitung tetap terjaga.
 - Perubahan kelas menggunakan kebijakan voting dan tie-break yang ditentukan.
 - Reset run menghapus state lama; ekspor dan summary cocok dengan event log.
+- Rekap per lajur memakai titik potong dan kelas final event. Uji tumpang tindih, batas zona, dan crossing di luar zona. Jumlah rekap per lajur cocok dengan log event.
 - Frame tanpa observasi dan run tanpa kendaraan tetap menghasilkan keluaran valid.
 - Validasi garis nol panjang, koordinat, video rusak, dan FPS tidak valid memberikan kegagalan yang jelas.
 

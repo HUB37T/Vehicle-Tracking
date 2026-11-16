@@ -212,9 +212,10 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         strict=True,
     ):
         column.metric(label, value, border=True)
-    table, video, traffic, heatmap, evidence, audit, exports = st.tabs(
+    table, lanes, video, traffic, heatmap, evidence, audit, exports = st.tabs(
         (
             "Rekap",
+            "Per lajur",
             "Video",
             "Lalu lintas",
             "Heatmap",
@@ -236,6 +237,29 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         counts_chart.bar_chart(frame, x="Kendaraan", y=["A → B", "B → A"], stack=False)
         with st.container(border=True):
             show_timeline(result)
+    with lanes:
+        if lane_path := result.artifact_paths.get("lane_counts_csv"):
+            lane_rows = pd.read_csv(
+                lane_path, dtype={"zone_id": str, "zone_name": str}, keep_default_na=False
+            )
+            lane_rows["Prioritas"] = [
+                str(number) if zone_id else "—"
+                for number, zone_id in enumerate(lane_rows["zone_id"], 1)
+            ]
+            st.caption(
+                "Setiap crossing masuk satu zona berdasarkan titik potongnya. "
+                "Jika zona bertumpuk, zona dengan nomor prioritas terkecil yang dipakai."
+            )
+            st.dataframe(
+                lane_rows[["Prioritas", "zone_name", *VEHICLE_CLASSES, "total"]].rename(
+                    columns={"zone_name": "Lajur", **CLASSES, "total": "Total"}
+                ),
+                hide_index=True,
+            )
+        elif used.get("traffic_zones"):
+            st.info("Jalankan ulang video ini untuk membuat rekap per lajur.")
+        else:
+            st.info("Atur zona di Siapkan analisis → Zona per lajur/arah, lalu jalankan analisis.")
     with video:
         st.video(Path(result.artifact_paths["annotated_video"]))
         st.caption("Video beranotasi disimpan tanpa audio sumber.")
@@ -289,6 +313,7 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
         for key, label, mime in (
             ("events_csv", "Unduh daftar crossing", "text/csv"),
             ("counts_csv", "Unduh rekap hitungan", "text/csv"),
+            ("lane_counts_csv", "Unduh hitungan per lajur", "text/csv"),
             ("crossing_audit", "Unduh audit crossing", "text/csv"),
             ("timeline_csv", "Unduh grafik waktu CSV", "text/csv"),
             ("traffic_csv", "Unduh status lalu lintas", "text/csv"),
@@ -632,9 +657,11 @@ def _show_setup(queue, owner, has_active) -> None:
                         width="stretch",
                     )
                 with tools:
-                    if traffic_enabled and congestion is not None:
+                    if congestion is not None:
                         zones = configure_zones(
-                            image, replace(config, congestion=congestion), geometry_key
+                            _line_preview(image, line) if line is not None else image,
+                            replace(config, congestion=congestion),
+                            geometry_key,
                         )
                     ready = line is not None and congestion is not None and zones is not None
                     if st.button("Periksa kualitas video sebelum analisis"):

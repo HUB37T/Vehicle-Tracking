@@ -3,6 +3,34 @@
 from math import isfinite
 from numbers import Real
 
+_EDGE_TOLERANCE = 1e-12
+
+
+def _cross(a, b, c):
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _on_edge(a, b, p):
+    return (
+        abs(_cross(a, b, p)) < _EDGE_TOLERANCE
+        and min(a[0], b[0]) - _EDGE_TOLERANCE <= p[0] <= max(a[0], b[0]) + _EDGE_TOLERANCE
+        and min(a[1], b[1]) - _EDGE_TOLERANCE <= p[1] <= max(a[1], b[1]) + _EDGE_TOLERANCE
+    )
+
+
+def polygon_contains(polygon, point) -> bool:
+    """Test a point against a validated polygon, including its boundary."""
+    x, y = point
+    inside = False
+    for a, b in zip(polygon, (*polygon[1:], polygon[0]), strict=True):
+        if _on_edge(a, b, point):
+            return True
+        ax, ay = a
+        bx, by = b
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            inside = not inside
+    return inside
+
 
 def validated_polygon(value):
     points = tuple(tuple(p) for p in value)
@@ -21,24 +49,14 @@ def validated_polygon(value):
     if area < 0.0001:
         raise ValueError("Luas poligon terlalu kecil.")
 
-    def cross(a, b, c):
-        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-
-    def on(a, b, p):
-        return (
-            abs(cross(a, b, p)) < 1e-12
-            and min(a[0], b[0]) - 1e-12 <= p[0] <= max(a[0], b[0]) + 1e-12
-            and min(a[1], b[1]) - 1e-12 <= p[1] <= max(a[1], b[1]) + 1e-12
-        )
-
     for i, (a, b) in enumerate(edges):
         for j, (c, d) in enumerate(edges):
             if j <= i or j == i + 1 or (i == 0 and j == len(edges) - 1):
                 continue
             if (
-                cross(a, b, c) * cross(a, b, d) < 0
-                and cross(c, d, a) * cross(c, d, b) < 0
-                or any((on(a, b, c), on(a, b, d), on(c, d, a), on(c, d, b)))
+                _cross(a, b, c) * _cross(a, b, d) < 0
+                and _cross(c, d, a) * _cross(c, d, b) < 0
+                or any((_on_edge(a, b, c), _on_edge(a, b, d), _on_edge(c, d, a), _on_edge(c, d, b)))
             ):
                 raise ValueError("Sisi poligon tidak boleh saling berpotongan.")
     return points

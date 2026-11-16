@@ -421,6 +421,13 @@ def test_zones_heatmap_quality_and_manual_dataset_in_ui(dashboard_project, monke
     assert len(info["traffic_zones"]) == 2
     assert Path(result.artifact_paths["heatmap_png"]).is_file()
     assert Path(result.artifact_paths["quality_png"]).is_file()
+    with Path(result.artifact_paths["lane_counts_csv"]).open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    lanes = next(tab for tab in app.tabs if tab.label == "Per lajur")
+    table = lanes.dataframe[0].value
+    assert table["Lajur"].tolist() == [row["zone_name"] for row in rows]
+    assert table["Total"].tolist() == [int(row["total"]) for row in rows]
+    assert table["Total"].sum() == result.summary.total
     heatmap = next(tab for tab in app.tabs if tab.label == "Heatmap")
     assert heatmap.get("image")
     monkeypatch.setattr(
