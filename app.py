@@ -22,6 +22,7 @@ from vehicle_counter.analytics_dashboard import (
     show_quality,
     show_traffic_zones,
 )
+from vehicle_counter.camera_preset_dashboard import show_camera_presets
 from vehicle_counter.config import load_config
 from vehicle_counter.contracts import (
     DIRECTIONS,
@@ -394,8 +395,20 @@ def _show_setup(queue, owner, has_active) -> None:
         source_version = (
             local.stat().st_mtime_ns if local else (uploaded.file_id if uploaded else "none")
         )
-        editor_key = f"editor-{source_name}-{source_version}-{profile}"
-        stored_points = st.session_state.get(editor_key + "-points")
+        preset_panel = st.container()
+        geometry_key = f"editor-{source_name}-{source_version}-{profile}"
+        traffic_key = geometry_key + "-traffic"
+        revision_key = geometry_key + "-revision"
+        revision = st.session_state.get(revision_key, 0)
+        applied_preset = st.session_state.pop(geometry_key + "-apply-preset", None)
+        if applied_preset is not None and not use_evaluation_settings:
+            st.session_state[geometry_key + "-points"] = applied_preset.points()
+            st.session_state[traffic_key] = True
+            revision += 1
+            st.session_state[revision_key] = revision
+        # A new widget key drops old drag events and reloads the numeric sliders on apply.
+        editor_key = f"{geometry_key}-revision-{revision}" if revision else geometry_key
+        stored_points = st.session_state.get(geometry_key + "-points")
         initial_line = config.counting_line
         initial_congestion = config.congestion
         if stored_points:
@@ -403,7 +416,11 @@ def _show_setup(queue, owner, has_active) -> None:
             if not use_evaluation_settings:
                 initial_line = saved_line
             initial_congestion = replace(initial_congestion, roi=saved_roi)
-        traffic_enabled = st.checkbox("Aktifkan indikator macet", value=config.congestion.enabled)
+        traffic_enabled = st.checkbox(
+            "Aktifkan indikator macet",
+            value=config.congestion.enabled if traffic_key not in st.session_state else False,
+            key=traffic_key,
+        )
         heatmap_enabled = st.checkbox(
             "Buat heatmap keberadaan kendaraan", value=config.heatmap_enabled
         )
@@ -445,7 +462,7 @@ def _show_setup(queue, owner, has_active) -> None:
                 numeric_roi = st.checkbox("Atur area dengan angka", value=False)
                 if numeric_roi:
                     values = [
-                        st.slider(label, 0.0, 1.0, float(value), 0.01)
+                        st.slider(label, 0.0, 1.0, float(value), 0.01, key=f"{editor_key}-{label}")
                         for label, value in zip(
                             ("Area X kiri", "Area Y atas", "Area X kanan", "Area Y bawah"),
                             congestion.roi,
@@ -520,35 +537,61 @@ def _show_setup(queue, owner, has_active) -> None:
             )
 
     ready = False
+    video_ready = False
     zones = ()
     with preview:
         st.subheader("Pratinjau dan garis hitung", anchor=False)
+        if applied_preset is not None:
+            st.success("Preset diterapkan. Periksa posisi garis dan kotak pada pratinjau.")
         if use_evaluation_settings:
             line = config.counting_line
-            editor_mode = "Geser di gambar" if traffic_enabled else "Koordinat angka"
+            edit_line = False
             st.caption("Profil ini memakai garis dari evaluasi klip.")
         else:
             editor_mode = st.radio(
                 "Pengaturan garis", ("Geser di gambar", "Koordinat angka"), horizontal=True
             )
             line = initial_line
-            if editor_mode == "Koordinat angka":
+            edit_line = editor_mode == "Geser di gambar"
+            if not edit_line:
                 st.caption("P1 dan P2 memakai koordinat 0–1 dari sudut kiri atas.")
-                x1 = st.slider("P1 · X", 0.0, 1.0, initial_line.p1[0], 0.01)
-                y1 = st.slider("P1 · Y", 0.0, 1.0, initial_line.p1[1], 0.01)
-                x2 = st.slider("P2 · X", 0.0, 1.0, initial_line.p2[0], 0.01)
-                y2 = st.slider("P2 · Y", 0.0, 1.0, initial_line.p2[1], 0.01)
+                x1, y1, x2, y2 = [
+                    st.slider(label, 0.0, 1.0, value, 0.01, key=f"{editor_key}-{label}")
+                    for label, value in zip(
+                        ("P1 · X", "P1 · Y", "P2 · X", "P2 · Y"),
+                        (*initial_line.p1, *initial_line.p2),
+                        strict=True,
+                    )
+                ]
                 try:
                     line = replace(line, p1=(x1, y1), p2=(x2, y2))
-                    if congestion is not None:
-                        st.session_state[editor_key + "-points"] = {
-                            "p1": list(line.p1),
-                            "p2": list(line.p2),
-                            "roi": list(congestion.roi),
-                        }
                 except ValueError as error:
                     line = None
                     st.error(str(error))
+
+        edit_roi = traffic_enabled and not numeric_roi
+        show_editor = line is not None and congestion is not None and (edit_line or edit_roi)
+        # Widget state already contains the completed gesture when Streamlit reruns.
+        # Consume it before sending coordinates back to the component.
+        result = st.session_state.get(editor_key)
+        if result is not None and result != st.session_state.get(geometry_key + "-last-value"):
+            st.session_state[geometry_key + "-last-value"] = result
+            if show_editor:
+                try:
+                    candidate_line, area = decode_editor(result, line)
+                except ValueError as error:
+                    st.warning(f"Posisi terakhir dipertahankan. {error}")
+                else:
+                    if edit_line:
+                        line = candidate_line
+                    if edit_roi:
+                        congestion = replace(congestion, roi=area)
+        if line is not None and congestion is not None:
+            st.session_state[geometry_key + "-points"] = {
+                "p1": list(line.p1),
+                "p2": list(line.p2),
+                "roi": list(congestion.roi),
+            }
 
         if local is None and data is None:
             with st.container(key="vehicle_empty_preview"):
@@ -558,33 +601,22 @@ def _show_setup(queue, owner, has_active) -> None:
         else:
             try:
                 metadata, image = _preview(local, data, local.stat().st_mtime_ns if local else None)
+                video_ready = True
                 st.caption(
                     f"{source_name} · {metadata.width} × {metadata.height} · "
                     f"{metadata.source_fps:g} fps"
                 )
-                if editor_mode == "Geser di gambar" and line is not None and congestion is not None:
-                    key = editor_key
-                    result = render_editor(
+                if show_editor:
+                    render_editor(
                         image,
                         line,
                         congestion.roi,
-                        key=key,
-                        edit_roi=traffic_enabled and not numeric_roi,
+                        key=editor_key,
+                        edit_roi=edit_roi,
                         show_roi=traffic_enabled,
-                        edit_line=not use_evaluation_settings,
+                        edit_line=edit_line,
+                        saved_edit_id=result.get("edit_id") if isinstance(result, dict) else None,
                     )
-                    if result is not None and result != st.session_state.get(key + "-last-value"):
-                        candidate_line, area = decode_editor(result, line)
-                        if not use_evaluation_settings:
-                            line = candidate_line
-                        if not numeric_roi:
-                            congestion = replace(congestion, roi=area)
-                        st.session_state[key + "-last-value"] = result
-                    st.session_state[key + "-points"] = {
-                        "p1": list(line.p1),
-                        "p2": list(line.p2),
-                        "roi": list(congestion.roi),
-                    }
                     st.caption(
                         f"P1 ({line.p1[0]:.2f}, {line.p1[1]:.2f})   "
                         f"P2 ({line.p2[0]:.2f}, {line.p2[1]:.2f})"
@@ -602,7 +634,7 @@ def _show_setup(queue, owner, has_active) -> None:
                 with tools:
                     if traffic_enabled and congestion is not None:
                         zones = configure_zones(
-                            image, replace(config, congestion=congestion), editor_key
+                            image, replace(config, congestion=congestion), geometry_key
                         )
                     ready = line is not None and congestion is not None and zones is not None
                     if st.button("Periksa kualitas video sebelum analisis"):
@@ -616,6 +648,26 @@ def _show_setup(queue, owner, has_active) -> None:
                         show_quality(report, panel)
             except (ValueError, OSError, cv2.error) as error:
                 st.error(f"Video tidak dapat dibaca. {error}")
+
+    with preset_panel:
+        apply_hint = None
+        if not video_ready:
+            apply_hint = "Pilih video yang bisa dipratinjau untuk menerapkan preset."
+        elif use_evaluation_settings:
+            apply_hint = "Pilih profil Kustom untuk menerapkan preset ke video ini."
+        current_geometry = (
+            (line.p1, line.p2, congestion.roi)
+            if video_ready and line is not None and congestion is not None
+            else None
+        )
+        selected_preset = show_camera_presets(
+            None if PUBLIC_DEMO else ROOT / "outputs" / "camera-presets.sqlite3",
+            current_geometry,
+            apply_hint=apply_hint,
+        )
+        if selected_preset is not None:
+            st.session_state[geometry_key + "-apply-preset"] = selected_preset
+            st.rerun()
 
     actions.subheader("Jalankan analisis", anchor=False)
     time_control, run_control = actions.columns([1, 1])

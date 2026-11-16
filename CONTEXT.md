@@ -62,6 +62,7 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Count | Agregasi crossing event; berbeda dari jumlah box pada frame. |
 | Uji singkat | Run terhadap awal video selama batas detik yang dipilih; ditandai `analysis_scope.kind: preview`, bukan hitungan seluruh video. |
 | Area jalan | Persegi panjang pengamatan indikator lalu lintas; terpisah dari garis counting dan ROI detektor. Anchor tengah bawah menentukan track yang berada di dalam area. |
+| Preset kamera | Simpanan bernama untuk posisi garis hitung dan persegi panjang area jalan pada sudut serta framing kamera tertentu. |
 | Keterisian area | Perkiraan fraksi area jalan yang tertutup gabungan box kendaraan teramati; bukan kepadatan kendaraan per kilometer. |
 | Gerak relatif | Perpindahan pusat box per detik dibagi diagonal box; bukan kecepatan fisik dalam km/jam. |
 | Indikasi macet | Kondisi area cukup padat dan sebagian besar track bergerak lambat selama ambang durasi; merupakan indikator yang perlu divalidasi per kamera. |
@@ -410,7 +411,8 @@ Contoh pesan yang harus informatif: video tidak dapat dibaca, FPS tidak valid, g
 ### 13.1 Pengaturan dan pemeriksaan hasil
 
 - Antarmuka Streamlit memakai empat tab utama **Siapkan analisis**, **Antrean**, **Hasil**, dan **Riwayat**. Pratinjau garis dan tombol mulai berada di satu kolom. Saat pekerjaan berakhir dan tab Antrean masih aktif, UI membuka Hasil.
-- Mode **Kustom** menyediakan drag P1/P2 atau kontrol angka. Profil evaluasi yang dibekukan mempertahankan garisnya. Area jalan indikator macet dapat digeser melalui dua sudut biru atau diatur dengan angka.
+- Mode **Kustom** menyediakan drag garis dan titik P1/P2 atau kontrol angka. Profil evaluasi yang dibekukan mempertahankan garisnya. Kotak area macet bisa digeser utuh, diubah ukurannya lewat sudut biru, atau diatur dengan angka. Posisi disimpan saat drag dilepas dan dipertahankan untuk video serta profil yang sama selama sesi.
+- **Preset kamera** menyimpan urutan P1/P2 dan posisi area jalan sebagai koordinat ternormalisasi. Menerapkan preset ke video yang dipilih juga mengaktifkan indikator macet. Profil evaluasi tetap menggunakan garisnya sendiri. Preset dapat dibagikan melalui ekspor dan impor JSON.
 - **Uji singkat** menganalisis 3, 5, atau 10 detik awal. Periksa garis, hasil tracking, dan area sebelum menjalankan seluruh video.
 - **Perbandingan metode** menjalankan none/CLAHE, ByteTrack/DeepSORT, atau empat kombinasi secara berurutan dengan sumber, garis, ROI, serta batas waktu sama. Selisih jumlah dan processing FPS belum menunjukkan akurasi; gunakan GT yang sesuai untuk evaluasi run penuh.
 - **Rekap** memuat hitungan dan grafik waktu. **Lalu lintas**, **Heatmap**, **Bukti materi**, serta **Audit crossing** membuka tab langsung di Hasil. Diagnostik berada di Bukti materi. Semua memakai artefak run yang sama. Audit menyediakan catatan sesuai, hitung ganda, salah kelas, terlewat, atau meragukan. Catatan tidak menulis ulang `events.csv` dan tidak otomatis menjadi GT.

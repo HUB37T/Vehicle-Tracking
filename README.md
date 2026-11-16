@@ -132,6 +132,14 @@ Buka `http://127.0.0.1:8501`. Di **Siapkan analisis**, pilih video dari `data/vi
 
 Pakai **Uji singkat** untuk memeriksa 3, 5, atau 10 detik awal, atau **Mulai analisis** untuk video penuh. Pantau proses di **Antrean**. Jika kamu masih di tab Antrean saat proses berakhir, aplikasi membuka **Hasil**. **Riwayat** membuka kembali hasil tersimpan. Hasil baru berada di `outputs/jobs/<job_id>/` dan hasil lama di `outputs/ui/` tetap terbaca.
 
+### Menyimpan dan berbagi preset kamera
+
+1. Pilih video, aktifkan indikator macet untuk melihat kotaknya, lalu atur garis dan kotak pada pratinjau. Buka **Preset kamera**, isi **Nama preset**, dan klik **Simpan posisi sekarang**.
+2. Untuk memakai lagi, pilih video dengan sudut dan framing kamera yang sama. Pilih **Kustom** jika video memiliki profil evaluasi. Pilih nama di **Preset tersimpan**, lalu klik **Terapkan preset**. Garis dan kotak akan tampil pada pratinjau dengan indikator macet aktif.
+3. Untuk berbagi, pilih preset lalu klik **Unduh JSON preset**. Di perangkat lain, buka **Preset kamera**, unggah file, klik **Impor preset**, lalu **Terapkan preset**. Gunakan nama berbeda jika sudah ada preset dengan nama sama dan posisi berbeda.
+
+Preset berisi nama, posisi P1/P2 dalam urutan asli, serta koordinat kotak utama pada rentang 0–1. Di lokal, daftar tersimpan di `outputs/camera-presets.sqlite3`. Di demo publik, daftar tersedia selama sesi browser, jadi unduh JSON untuk memakainya di sesi lain.
+
 ### Antrean dan tombol batal
 
 Antrean aplikasi menjalankan satu pekerjaan inferensi pada satu waktu, termasuk seluruh batch perbandingan. Maksimal empat pekerjaan aktif, satu per sesi. Progres dan preview diperbarui berkala; widget tetap dapat dipakai. **Batalkan pekerjaan** langsung membatalkan permintaan yang menunggu, atau meminta proses berjalan berhenti setelah operasi/frame saat ini. Hitungan parsial dan metadata disimpan sebagai `cancelled`; video parsial tidak disajikan sebagai hasil sukses dan evaluator menolaknya.
@@ -147,7 +155,7 @@ Pekerjaan menyimpan salinan video serta konfigurasi saat dikirim; perubahan widg
 
 ### Mencoba indikator macet
 
-Aktifkan **Indikator macet**, lalu pilih area jalan dengan dua sudut biru pada preview. Hindari langit, trotoar, atau area kosong yang luas, dan pilih area yang juga dipantau detektor. Atur ambang di **Pengaturan indikator macet** jika sudut kamera berbeda. Status serta grafik muncul pada tab **Lalu lintas** dan overlay video hasil.
+Aktifkan **Indikator macet**, lalu geser kotak biru untuk memindahkan area atau tarik sudutnya untuk mengubah ukurannya. Posisi disimpan saat drag dilepas. Hindari langit, trotoar, atau area kosong yang luas, dan pilih area yang juga dipantau detektor. Atur ambang di **Pengaturan indikator macet** jika sudut kamera berbeda. Status serta grafik muncul pada tab **Lalu lintas** dan overlay video hasil.
 
 Indikator awal menggabungkan minimal 3 track, keterisian area minimal 15%, dan minimal 65% track bergerak lambat selama 3 detik. Kecepatan relatif dihitung dari perpindahan pusat box terhadap diagonal box, dengan riwayat minimal 1 detik. Ini belum mengukur km/jam. Kamera harus diam; ID terputus, perspektif, parkir, antrean lampu merah, dan pemilihan area dapat memengaruhi hasil. Ambang memerlukan validasi per kamera; belum ada metrik akurasi macet.
 

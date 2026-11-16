@@ -158,10 +158,47 @@ def test_manual_review_keeps_automatic_csv_immutable(dashboard_project):
         )
 
 
-def test_numeric_line_survives_switch_back_to_editor(dashboard_project, monkeypatch):
+def line_editor_args(app):
+    return next(
+        json.loads(component.proto.json_args)
+        for component in app.get("component_instance")
+        if component.proto.component_name.endswith("vehicle_line_editor")
+    )
+
+
+def test_dragged_geometry_is_rendered_on_the_same_rerun(dashboard_project):
     from streamlit.testing.v1 import AppTest
 
-    from vehicle_counter import line_editor, pipeline
+    root, video = dashboard_project
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    next(w for w in app.checkbox if w.label == "Aktifkan indikator macet").check().run()
+    applied = {
+        "p1": [0.27, 0.52],
+        "p2": [0.81, 0.57],
+        "roi": [0.14, 0.39, 0.76, 0.84],
+        "edit_id": "release-1",
+    }
+    app.session_state[line_editor_args(app)["key"]] = applied
+    app.run()
+    assert not app.exception
+    rendered = line_editor_args(app)
+    assert {field: rendered[field] for field in ("p1", "p2", "roi")} == {
+        field: applied[field] for field in ("p1", "p2", "roi")
+    }
+    assert rendered["saved_edit_id"] == "release-1"
+    next(w for w in app.checkbox if w.label == "Buat heatmap keberadaan kendaraan").check().run()
+    assert line_editor_args(app)["roi"] == applied["roi"]
+    numeric = next(w for w in app.checkbox if w.label == "Atur area dengan angka")
+    numeric.check().run()
+    next(w for w in app.slider if w.label == "Area X kiri").set_value(0.24).run()
+    next(w for w in app.checkbox if w.label == "Atur area dengan angka").uncheck().run()
+    assert line_editor_args(app)["roi"] == [0.24, 0.39, 0.76, 0.84]
+    assert line_editor_args(app)["p1"] == applied["p1"]
+
+
+def test_numeric_line_survives_switch_back_to_editor(dashboard_project):
+    from streamlit.testing.v1 import AppTest
 
     root, video = dashboard_project
     previous_drag = {
@@ -170,10 +207,11 @@ def test_numeric_line_survives_switch_back_to_editor(dashboard_project, monkeypa
         "roi": [0.1, 0.4, 0.9, 0.9],
         "edit_id": "first",
     }
-    monkeypatch.setattr(line_editor, "render_editor", lambda *args, **kwargs: previous_drag)
-    monkeypatch.setattr(pipeline, "process_video", fixture_process)
     app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
     next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    component_key = line_editor_args(app)["key"]
+    app.session_state[component_key] = previous_drag
+    app.run()
     next(w for w in app.radio if w.label == "Pengaturan garis").set_value("Koordinat angka").run()
     next(w for w in app.slider if w.label == "P1 · X").set_value(0.35).run()
     next(w for w in app.radio if w.label == "Pengaturan garis").set_value("Geser di gambar").run()
@@ -183,14 +221,85 @@ def test_numeric_line_survives_switch_back_to_editor(dashboard_project, monkeypa
     result = app.session_state["result"][0]
     info = json.loads(Path(result.artifact_paths["run_json"]).read_text())
     assert info["config"]["counting_line"]["p1"] == [0.35, 0.6]
-    monkeypatch.setattr(
-        line_editor, "render_editor", lambda *args, **kwargs: {**previous_drag, "edit_id": "second"}
-    )
+    app.session_state[component_key] = {**previous_drag, "edit_id": "second"}
     app.run()
     next(w for w in app.button if w.label == "Uji singkat").click().run()
     finish_app_job(app, root)
     info = json.loads(Path(app.session_state["result"][0].artifact_paths["run_json"]).read_text())
     assert info["config"]["counting_line"]["p1"] == [0.2, 0.6]
+
+
+def test_saved_camera_preset_applies_to_another_clip_and_analysis(dashboard_project):
+    from streamlit.testing.v1 import AppTest
+
+    root, video = dashboard_project
+    next_clip = video.with_name("camera-1-next.mp4")
+    shutil.copyfile(video, next_clip)
+    geometry = {"p1": [0.83, 0.63], "p2": [0.24, 0.58], "roi": [0.19, 0.34, 0.91, 0.88]}
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    next(w for w in app.checkbox if w.label == "Aktifkan indikator macet").check().run()
+    app.session_state[line_editor_args(app)["key"]] = {**geometry, "edit_id": "dragged-preset"}
+    next(w for w in app.text_input if w.label == "Nama preset").set_value("Kamera 1").run()
+    next(w for w in app.button if w.label == "Simpan posisi sekarang").click().run()
+    assert not app.exception and not app.error
+    assert any(item.proto.label == "Unduh JSON preset" for item in app.get("download_button"))
+
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(next_clip.name).run()
+    next(w for w in app.radio if w.label == "Pengaturan garis").set_value("Koordinat angka").run()
+    next(w for w in app.slider if w.label == "P1 · X").set_value(0.3).run()
+    next(w for w in app.selectbox if w.label == "Preset tersimpan").select("kamera 1").run()
+    next(w for w in app.button if w.label == "Terapkan preset").click().run()
+    assert not app.exception and not app.error
+    assert next(w for w in app.checkbox if w.label == "Aktifkan indikator macet").value
+    assert next(w for w in app.slider if w.label == "P1 · X").value == geometry["p1"][0]
+    next(w for w in app.radio if w.label == "Pengaturan garis").set_value("Geser di gambar").run()
+    assert all(line_editor_args(app)[field] == value for field, value in geometry.items())
+    next(w for w in app.button if w.label == "Uji singkat").click().run()
+    finish_app_job(app, root)
+    result = app.session_state["result"][0]
+    config = json.loads(Path(result.artifact_paths["run_json"]).read_text())["config"]
+    assert config["counting_line"]["p1"] == geometry["p1"]
+    assert config["counting_line"]["p2"] == geometry["p2"]
+    assert config["congestion"]["roi"] == geometry["roi"]
+
+
+def test_imported_camera_preset_is_private_in_public_demo(dashboard_project, monkeypatch):
+    from streamlit.testing.v1 import AppTest
+
+    from vehicle_counter.camera_presets import CameraPreset
+
+    root, video = dashboard_project
+    evaluation_clip = video.with_name("vehicles-3-bytetrack-test.mp4")
+    shutil.copyfile(video, evaluation_clip)
+    experiment_dir = root / "configs" / "experiments"
+    experiment_dir.mkdir()
+    config_name = "vehicles-3-coursework.yaml"
+    repo = Path(__file__).resolve().parents[1]
+    shutil.copyfile(repo / "configs" / "experiments" / config_name, experiment_dir / config_name)
+    monkeypatch.setenv("VEHICLE_COUNTER_PUBLIC_DEMO", "1")
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    uploader = next(w for w in app.file_uploader if w.label == "File preset JSON")
+    uploader.upload("invalid.json", b"{malformed}", "application/json").run()
+    next(w for w in app.button if w.label == "Impor preset").click().run()
+    assert any("JSON yang valid" in item.value for item in app.error)
+
+    preset = CameraPreset("Kamera teman", (0.3, 0.7), (0.9, 0.58), (0.12, 0.41, 0.82, 0.93))
+    uploader = next(w for w in app.file_uploader if w.label == "File preset JSON")
+    uploader.upload("camera.json", preset.to_json().encode("utf-8"), "application/json").run()
+    next(w for w in app.button if w.label == "Impor preset").click().run()
+    assert not app.exception and not app.error
+    assert next(w for w in app.button if w.label == "Terapkan preset").disabled
+    next(w for w in app.selectbox if w.label == "Sumber video").select(evaluation_clip.name).run()
+    assert next(w for w in app.button if w.label == "Terapkan preset").disabled
+    next(w for w in app.radio if w.label == "Profil analisis").set_value("Kustom").run()
+    next(w for w in app.button if w.label == "Terapkan preset").click().run()
+    assert all(line_editor_args(app)[field] == value for field, value in preset.points().items())
+
+    other_session = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    assert next(w for w in other_session.selectbox if w.label == "Preset tersimpan").options == []
+    assert not (root / "outputs" / "camera-presets.sqlite3").exists()
 
 
 def test_comparison_holds_geometry_and_records_partial_failure(dashboard_project):
