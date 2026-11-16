@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
+from itertools import islice
+from math import ceil, isfinite
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
@@ -15,10 +17,14 @@ from vehicle_counter.config import config_to_dict
 from vehicle_counter.contracts import ProgressUpdate, RunConfig, RunResult, VideoMetadata
 from vehicle_counter.counting import VehicleCounter
 from vehicle_counter.crossing_audit import audit_crossings, write_crossing_audit
+from vehicle_counter.execution import AnalysisCancelled, check_cancel
 from vehicle_counter.exporting import export_counts, file_sha256, write_json
+from vehicle_counter.heatmap import PresenceHeatmap
 from vehicle_counter.preprocessing import preprocess_frame
+from vehicle_counter.run_analysis import CrossingDiagnostics, export_analysis, export_zone_analysis
 from vehicle_counter.run_evidence import render_evidence, write_evidence
 from vehicle_counter.tracking import FrameTracker, YoloTracker
+from vehicle_counter.traffic import TrafficMonitor
 from vehicle_counter.truck_review import TruckCropReviewer
 from vehicle_counter.video import AnnotatedVideoWriter, VideoReader, verify_output_video
 from vehicle_counter.visualization import FrameAnnotator
@@ -57,6 +63,9 @@ def process_video(
     on_progress: ProgressCallback | None = None,
     *,
     tracker_factory: TrackerFactory | None = None,
+    max_seconds: float | None = None,
+    source_label: str | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> RunResult:
     """Process one local CFR MP4 with fresh tracker/counter state.
 
@@ -65,6 +74,15 @@ def process_video(
     the run failed before propagating. An injected factory is a testing seam;
     its metadata must honestly distinguish fake tracks from model inference.
     """
+    if max_seconds is not None and (
+        isinstance(max_seconds, bool)
+        or not isinstance(max_seconds, (int, float))
+        or not isfinite(max_seconds)
+        or max_seconds <= 0
+    ):
+        raise ValueError("max_seconds harus angka positif yang berhingga.")
+    if source_label is not None and (not isinstance(source_label, str) or not source_label.strip()):
+        raise ValueError("Nama tampilan sumber harus teks yang tidak kosong.")
     total_start = perf_counter()
     with VideoReader(source_path) as reader:
         metadata = reader.metadata
@@ -74,11 +92,53 @@ def process_video(
         manifest_path = output_dir / "run.json"
         video_path = output_dir / "annotated.mp4"
         counter = VehicleCounter(run_id, config, width=metadata.width, height=metadata.height)
+        diagnostics = CrossingDiagnostics(counter.line, max_gap=config.max_crossing_gap_seconds)
+        traffic = (
+            TrafficMonitor(
+                config.congestion,
+                width=metadata.width,
+                height=metadata.height,
+                max_gap=config.max_crossing_gap_seconds,
+            )
+            if config.congestion.enabled
+            else None
+        )
+        zones = (
+            [
+                (
+                    zone,
+                    TrafficMonitor(
+                        config.congestion,
+                        width=metadata.width,
+                        height=metadata.height,
+                        max_gap=config.max_crossing_gap_seconds,
+                        polygon=zone.polygon,
+                    ),
+                )
+                for zone in config.traffic_zones
+            ]
+            if config.congestion.enabled
+            else []
+        )
+        heatmap = (
+            PresenceHeatmap(metadata.width, metadata.height, metadata.source_fps)
+            if config.heatmap_enabled
+            else None
+        )
+        heatmap_background = None
+        frame_limit = ceil(max_seconds * metadata.source_fps) if max_seconds else None
+        progress_total = (
+            min(metadata.frame_count, frame_limit)
+            if (metadata.frame_count is not None and frame_limit is not None)
+            else (frame_limit or metadata.frame_count)
+        )
         annotator = FrameAnnotator(counter.line)
         warnings = [
             "Timestamp mengasumsikan video constant frame rate (CFR). Konversi VFR dahulu.",
             "Video beranotasi tidak mempertahankan audio sumber.",
         ]
+        if max_seconds is not None:
+            warnings.append(f"Uji singkat memproses paling lama {max_seconds:g} detik awal video.")
         if metadata.frame_count is None:
             warnings.append(
                 "Jumlah frame sumber tidak diketahui; kelengkapan EOF tidak dapat dipastikan."
@@ -90,8 +150,15 @@ def process_video(
             "status": "running",
             "started_at_utc": datetime.now(UTC).isoformat(),
             "source": {"path": str(reader.path), "sha256": None, "kind": "local_video"},
-            "video_metadata": asdict(metadata),
+            "video_metadata": {
+                **asdict(metadata),
+                "source_name": source_label or metadata.source_name,
+            },
             "config": config_to_dict(config),
+            "analysis_scope": {
+                "kind": "preview" if max_seconds is not None else "full",
+                "max_seconds": max_seconds,
+            },
             "software": _versions(),
             "tracker": None,
             "process_evidence": None,
@@ -113,7 +180,16 @@ def process_video(
         evidence = None
         evidence_priority = -1
         try:
+            check_cancel(should_cancel)
             manifest["source"]["sha256"] = file_sha256(reader.path)
+            if config.quality_check:
+                from vehicle_counter.quality import export_quality, inspect_quality
+
+                quality, panel = inspect_quality(reader.path, config, should_cancel=should_cancel)
+                manifest["quality"] = quality
+                artifacts.update(export_quality(output_dir, quality, panel))
+                warnings.extend(quality["warnings"])
+            check_cancel(should_cancel)
             model_start = perf_counter()
             tracker = (tracker_factory or YoloTracker)(config, metadata)
             review_truck = (
@@ -134,7 +210,9 @@ def process_video(
             preview_interval = max(1, round(metadata.source_fps / 2))
             processing_start = perf_counter()
             with AnnotatedVideoWriter(video_path, metadata) as writer:
-                for frame_index, frame in reader:
+                frames = islice(reader, frame_limit) if frame_limit is not None else iter(reader)
+                for frame_index, frame in frames:
+                    check_cancel(should_cancel)
                     timestamp = frame_index / metadata.source_fps
                     input_frame = preprocess_frame(frame, config.preprocess)
                     observations = tracker.track_frame(
@@ -151,6 +229,20 @@ def process_video(
                         observations, frame_bgr=frame, review_truck=review_truck
                     )
                     detections = getattr(tracker, "last_detections", None)
+                    diagnostics.update(observations, detections)
+                    if traffic is not None:
+                        traffic.update(observations, frame_index=frame_index, timestamp=timestamp)
+                    for _, monitor in zones:
+                        monitor.update(observations, frame_index=frame_index, timestamp=timestamp)
+                    if heatmap is not None:
+                        heatmap.update(observations)
+                        if heatmap_background is None:
+                            import cv2
+
+                            scale = min(1, 1280 / max(frame.shape[:2]))
+                            heatmap_background = cv2.resize(
+                                frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA
+                            )
                     audit_rows.extend(audit_crossings(events, observations, detections))
                     annotated = annotator.render(
                         frame,
@@ -158,6 +250,33 @@ def process_video(
                         counter.summary(),
                         timestamp_seconds=timestamp,
                     )
+                    if traffic is not None:
+                        annotated = traffic.draw_overlay(annotated)
+                    if zones:
+                        import cv2
+                        import numpy as np
+
+                        from vehicle_counter.traffic import TRAFFIC_LABELS
+
+                        for number, (_, monitor) in enumerate(zones, 1):
+                            color = (
+                                (50, 70, 255)
+                                if monitor.current.status == "congested"
+                                else (80, 220, 160)
+                            )
+                            points = np.rint(monitor.polygon).astype(np.int32)
+                            cv2.polylines(annotated, [points], True, color, 2)
+                            label = f"Z{number}: {TRAFFIC_LABELS[monitor.current.status]}"
+                            x, y = map(int, points[0])
+                            cv2.putText(
+                                annotated,
+                                label,
+                                (max(4, x), max(20, y - 5)),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5,
+                                color,
+                                2,
+                            )
                     writer.write(annotated)
                     if evidence_priority < 3:
                         detections = getattr(tracker, "last_detections", None)
@@ -187,7 +306,8 @@ def process_video(
                                 "frame_index": frame_index,
                                 "timestamp_seconds": timestamp,
                                 "selection": EVIDENCE_SELECTIONS[priority],
-                                "clahe_active": config.preprocess.mode == "clahe",
+                                "clahe_active": config.preprocess.mode
+                                in ("clahe", "bilateral_clahe"),
                                 "detections": None if detections is None else len(detections),
                                 "tracks": len(observations),
                             }
@@ -198,14 +318,44 @@ def process_video(
                             ProgressUpdate(
                                 run_id=run_id,
                                 processed_frames=processed,
-                                total_frames=metadata.frame_count,
+                                total_frames=progress_total,
                                 elapsed_seconds=perf_counter() - processing_start,
                                 summary=counter.summary(),
                                 preview_frame_bgr=annotated.copy(),
                             )
                         )
+            check_cancel(should_cancel)
             verify_output_video(video_path, metadata, processed)
             artifacts["annotated_video"] = str(video_path)
+            manifest["diagnostics"] = diagnostics.finish(len(counter.events))
+            manifest["analyzed_duration_seconds"] = processed / metadata.source_fps
+            manifest["traffic"] = (
+                traffic.summary(processed / metadata.source_fps) if traffic is not None else None
+            )
+            manifest["traffic_zones"] = [
+                {
+                    "zone_id": zone.zone_id,
+                    "name": zone.name,
+                    "polygon": zone.polygon,
+                    **monitor.summary(processed / metadata.source_fps),
+                }
+                for zone, monitor in zones
+            ]
+            if zones:
+                artifacts.update(
+                    export_zone_analysis(output_dir, zones, processed / metadata.source_fps)
+                )
+            if heatmap is not None and heatmap_background is not None:
+                artifacts.update(heatmap.export(output_dir, heatmap_background))
+            artifacts.update(
+                export_analysis(
+                    output_dir,
+                    counter.events,
+                    processed / metadata.source_fps,
+                    manifest["diagnostics"],
+                    traffic,
+                )
+            )
             audit_path = output_dir / "crossing_audit.csv"
             write_crossing_audit(audit_path, audit_rows)
             artifacts["crossing_audit"] = str(audit_path)
@@ -230,7 +380,7 @@ def process_video(
                     ProgressUpdate(
                         run_id=run_id,
                         processed_frames=processed,
-                        total_frames=metadata.frame_count,
+                        total_frames=progress_total,
                         elapsed_seconds=perf_counter() - processing_start,
                         summary=counter.summary(),
                         preview_frame_bgr=last_preview.copy() if last_preview is not None else None,
@@ -242,10 +392,12 @@ def process_video(
                 artifacts["process_evidence"] = str(evidence_path)
             manifest["status"] = "completed"
         except BaseException as error:
-            manifest["status"] = "failed"
+            manifest["status"] = "cancelled" if isinstance(error, AnalysisCancelled) else "failed"
             manifest["process_evidence"] = None
             manifest["error"] = {"type": type(error).__name__, "message": str(error)}
-            warnings.append(f"Analisis gagal: {error}")
+            warnings.append(
+                str(error) if isinstance(error, AnalysisCancelled) else f"Analisis gagal: {error}"
+            )
             # Preserve inspectable partial counts, always under failed run metadata.
             try:
                 artifacts.update(

@@ -1,0 +1,14 @@
+# Local queue demo. ROI covers the visible vehicle band, excluding empty foreground.
+tracker_config: bytetrack.yaml
+preprocess:
+  mode: clahe
+counting_line:
+  line_id: main
+  p1: [0.25, 0.51]
+  p2: [0.25, 0.93]
+  epsilon_height_fraction: 0.01
+deduplicate_crossings: true
+truck_review_weights: models/mobilenet_v3_large-5c1a4163.pth
+congestion:
+  enabled: true
+  roi: [0.05, 0.50, 0.95, 0.78]

@@ -1,6 +1,6 @@
 # CONTEXT — Penghitung Kendaraan dari Video
 
-Versi dokumen: 0.3 | Dibuat: 6 November 2026 | Diperbarui: 8 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
+Versi dokumen: 0.5 | Dibuat: 6 November 2026 | Diperbarui: 16 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
 
 Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent yang membantu pengerjaan. Baca sebelum merancang, menulis kode, menguji, atau mengubah lingkup proyek. Isinya mencakup tujuan, istilah, spesifikasi perilaku, rancangan teknis awal, pembagian pekerjaan, dan kriteria selesai agar hasil dari agent yang berbeda dapat digabungkan.
 
@@ -13,6 +13,12 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 **Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
 
 **Status terbaru:** pipeline video, panel bukti, antarmuka Streamlit, dan evaluator crossing tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch. Hasil awal dua klip jalan dicatat di `docs/counting-evaluation.md`. Profil ByteTrack `fuse_score: false` tersedia untuk eksperimen pada klip terpisah. Peninjau kedua serta evaluasi akhir dengan cakupan kelas dan kondisi yang lebih beragam masih diperlukan.
+
+**Perluasan 15 November 2026:** editor garis/area dengan drag, uji singkat, diagnostik hitungan, perbandingan metode, catatan pemeriksaan manual, grafik waktu, dan indikator macet tersedia. ByteTrack `fuse_score: true` tetap pilihan utama. Pembuatan laporan PDF ditunda atas instruksi pengguna; dokumentasi penggunaan tetap diperbarui.
+
+**Penyempurnaan berikutnya:** pilihan bobot YOLO11n/YOLO11s, kontrol ukuran/confidence, perbandingan model dengan parameter lain tetap, riwayat run, dan rentang waktu indikasi macet tersedia. YOLO11n tetap bawaan setelah uji dua klip; YOLO11s belum unggul konsisten. Kedua model memakai pretrained resmi, belum fine-tuning.
+
+**Perluasan 16 November 2026:** antrean FIFO aplikasi dengan satu proses inferensi aktif, pembatalan kooperatif, zona poligon per lajur, heatmap waktu keberadaan, pemeriksaan kualitas (histogram/Laplacian/FFT/ORB), filter median dan bilateral+CLAHE untuk eksperimen, serta pelabelan kotak manual tersedia. Bobot YOLO belum dilatih ulang. Penambahan materi dibedakan dari peningkatan akurasi yang harus dibuktikan dengan evaluasi.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -54,6 +60,19 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Direction | `A_TO_B` atau `B_TO_A`, sesuai perpindahan sisi. |
 | Crossing event | Satu kejadian penyeberangan sah yang dicatat ke event log. |
 | Count | Agregasi crossing event; berbeda dari jumlah box pada frame. |
+| Uji singkat | Run terhadap awal video selama batas detik yang dipilih; ditandai `analysis_scope.kind: preview`, bukan hitungan seluruh video. |
+| Area jalan | Persegi panjang pengamatan indikator lalu lintas; terpisah dari garis counting dan ROI detektor. Anchor tengah bawah menentukan track yang berada di dalam area. |
+| Keterisian area | Perkiraan fraksi area jalan yang tertutup gabungan box kendaraan teramati; bukan kepadatan kendaraan per kilometer. |
+| Gerak relatif | Perpindahan pusat box per detik dibagi diagonal box; bukan kecepatan fisik dalam km/jam. |
+| Indikasi macet | Kondisi area cukup padat dan sebagian besar track bergerak lambat selama ambang durasi; merupakan indikator yang perlu divalidasi per kamera. |
+| Catatan pemeriksa | Riwayat penilaian manusia yang disimpan terpisah dari event otomatis, tanpa mengubah hitungan otomatis. |
+| Kejadian indikasi macet | Rentang sampel berurutan berstatus macet, dimulai setelah ambang durasi konfirmasi dan berakhir saat status berubah atau klip berakhir. |
+| Pekerjaan analisis | Permintaan pemrosesan yang masuk antrean bersama. Satu pekerjaan dapat berisi satu run atau beberapa run perbandingan, dengan hasil serta status tersimpan. |
+| Pembatalan | Permintaan menghentikan pekerjaan setelah operasi/frame yang sedang berjalan. Hitungan parsial tetap diberi label belum lengkap dan tidak menjadi hasil akhir. |
+| Zona lalu lintas | Area jalan bernama, dapat berupa poligon, dengan indikator kepadatan/gerak sendiri. Nama lajur/arah diberikan pengguna, bukan disimpulkan otomatis dari sisi garis. |
+| Heatmap keberadaan | Akumulasi waktu observasi anchor kendaraan pada lokasi citra; warna menunjukkan keberadaan teramati, bukan bukti macet atau jumlah kendaraan fisik unik. |
+| Pemeriksaan kualitas | Pengukuran awal pencahayaan, ketajaman, dan gerak latar video untuk memberi petunjuk sebelum analisis, bukan skor akurasi model. |
+| Label pelatihan manual | Kotak kendaraan dan kelas yang diberikan pemeriksa pada frame sumber untuk calon dataset fine-tuning; berbeda dari catatan crossing dan prediksi model. |
 | Run | Satu eksekusi analisis dengan video dan konfigurasi tetap, diidentifikasi oleh `run_id`. |
 | Ground truth / GT | Anotasi manual yang menjadi pembanding hasil sistem. |
 | Pasangan otomatis | Dua event dengan kelas, arah, dan waktu yang memenuhi toleransi evaluator; identitas kendaraan belum terverifikasi. |
@@ -99,11 +118,13 @@ Eksperimen `none` versus `clahe` dan pembahasan hasilnya termasuk keluaran akade
 
 ### Pengembangan opsional setelah MVP
 
-- Sumber webcam/RTSP, ROI, banyak garis, dan banyak kamera.
+- Sumber webcam/RTSP, banyak garis, dan banyak kamera. ROI detektor serta area indikator lalu lintas sudah tersedia.
 - Perbandingan ByteTrack dengan DeepSORT atau tracker lain.
 - Pelatihan/fine-tuning untuk kelas kendaraan lokal.
 - Gamma correction atau filter spasial sebagai eksperimen tambahan yang terukur.
 - Ekspor grafik, analisis per interval waktu, dan kontrol gambar garis yang interaktif.
+
+Perluasan yang sudah diizinkan pengguna mencakup fitur pada bagian 13.1–13.2. Laporan PDF belum termasuk pekerjaan saat ini.
 
 ### Di luar lingkup awal
 
@@ -118,9 +139,12 @@ Pengenalan pelat, identifikasi pemilik kendaraan, pelacakan lintas kamera, detek
 | 3. Transformasi intensitas | Gamma correction sebagai pilihan input YOLO | Panel perbandingan mode dan konfigurasi run |
 | 4. Histogram dan peningkatan kualitas | CLAHE pada kanal luminansi | Perbandingan visual, histogram sampel, dan metrik counting |
 | 5–6. Filtering spasial | Gaussian smoothing dan unsharp masking sebagai pilihan input YOLO | Panel perbandingan mode dan konfigurasi run |
+| 5, 8. Smoothing/restorasi | Median untuk noise impuls dan bilateral sebelum CLAHE sebagai eksperimen | Mode input, parameter, dan evaluasi counting; tidak otomatis menjadi default |
+| 7. Domain frekuensi | FFT pada grayscale sampel, spektrum log-magnitude dan fraksi energi frekuensi tinggi | Panel kualitas dan angka per sampel; detail rendah belum membuktikan blur |
 | 9–10. Tepi dan thresholding | Canny pada grayscale yang dihaluskan, serta threshold tetap dan Otsu pada selisih antarframe | Panel tepi dan mask biner |
 | 11–12. Morfologi dan CCL | Opening dan closing mask Otsu, lalu pelabelan komponen dengan konektivitas 8 | Panel mask dan kotak kandidat, luas, serta centroid pada `lab.json` |
 | 15. Optical Flow | Lucas–Kanade untuk perpindahan titik sudut antara dua frame berurutan | Panel vektor gerak pada frame target |
+| 13–14. Fitur global/lokal | Histogram, entropy, kontras, variansi Laplacian; ORB + Hamming matching dan penyaringan RANSAC untuk gerak latar | Panel kualitas dan pasangan fitur konsisten; bukan classifier akurasi atau jaminan kamera stabil |
 | 16. Tracking objek modern | ByteTrack sebagai pilihan utama dan DeepSORT sebagai eksperimen opsional | ID dan lintasan antarframe; analisis ID switch dan perbandingan tracker |
 | 17–18. Deteksi deep learning dan YOLO | Detektor pretrained untuk jenis kendaraan | Box, kelas, confidence, serta penjelasan inferensi |
 
@@ -334,6 +358,8 @@ Adapter menggunakan satu `YOLO.predict` per frame lalu `BYTETracker.update` eksp
 
 `process_video` bersifat sinkron untuk baseline. Callback progres membawa snapshot yang aman dibaca UI, bukan objek tracker yang dapat dimutasi. `preview_frame_bgr` adalah salinan frame beranotasi atau `null` ketika pembaruan tidak membawa gambar; UI mengonversinya ke RGB untuk ditampilkan. Pipeline boleh membatasi frekuensi callback/preview agar tampilan tidak memperlambat analisis. Pengaturan widget baru berlaku pada run berikutnya. Pemrosesan model dilakukan sekali per run; interaksi UI setelah selesai memakai hasil tersimpan, bukan menjalankan video ulang tanpa perintah pengguna.
 
+`process_video` juga menerima keyword `max_seconds`, `source_label`, dan `should_cancel`. Callback pembatalan diperiksa sebelum pemuatan model, selama sampel kualitas, di sela frame, serta sebelum finalisasi. Pada UI, fungsi sinkron ini dipanggil oleh proses anak dari antrean, sehingga widget dan tombol batal tetap bisa dipakai. Perbandingan metode memakai antrean yang sama dan mempertahankan slot sampai seluruh batch selesai/dibatalkan. `CountEvent`, geometri crossing, dan pemilihan anchor tidak berubah.
+
 ## 12. Format keluaran dan lifecycle run
 
 Setiap run memakai folder unik `outputs/<run_id>/`. Berkas video sumber tetap utuh. Nama file unggahan untuk tampilan boleh dipertahankan, sedangkan path kerja dibuat aplikasi agar tidak bergantung pada nama dari pengguna.
@@ -359,7 +385,11 @@ demo-001,main,12,150,5.0,motorcycle,A_TO_B
 
 **`process_evidence.png`:** panel satu frame yang menampilkan sumber BGR, kanal L dari Lab, CLAHE pada L jika aktif, masukan aktual model, deteksi YOLO sebelum asosiasi, dan track ByteTrack beserta ID dan jejak. Frame crossing pertama diprioritaskan. Metadata `process_evidence` pada `run.json` mencatat frame, waktu, alasan pemilihan, status CLAHE, dan jumlah deteksi serta track. Kunci artefaknya juga `process_evidence`.
 
-Status run: `running`, `completed`, atau `failed`. Tulis `completed` setelah semua keluaran wajib selesai ditulis dan dapat dibaca. Jika pembacaan berhenti tidak wajar atau writer gagal, simpan status `failed` dan penjelasan; hasil parsial tidak disajikan sebagai hitungan akhir yang lengkap.
+**Keluaran tambahan:** `timeline.csv` berisi delapan kombinasi kelas–arah pada interval 5 detik, termasuk interval nol, seluruhnya diturunkan dari event otomatis. `diagnostics.json` mencatat observasi deteksi/track/sisi garis, jeda ID, dan petunjuk penanganan; petunjuk bukan bukti kausal atau daftar crossing yang pasti terlewat. `traffic.csv` hanya dibuat jika indikator macet aktif. `run.json` menambahkan `analysis_scope`, `analyzed_duration_seconds`, `diagnostics`, serta `traffic` dengan parameter dan ringkasan durasi. `CountEvent` beserta tujuh kolom CSV tetap sama.
+
+Uji singkat memakai frame awal berurutan hingga `ceil(FPS × max_seconds)` atau akhir sumber. Hasil sukses hanya menyatakan potongan tersebut selesai dan video keluarannya terverifikasi; evaluator menolak membandingkannya dengan GT video penuh. Run baru menghitung durasi status lalu lintas dengan mempertahankan status sampai sampel berikutnya atau akhir rentang analisis; `duration_basis` mencatat kebijakan ini. Run lama tetap memiliki ringkasan sebelumnya. `traffic_episodes.csv` dan `traffic.episodes` menyimpan rentang indikasi macet yang sama, dengan waktu awal/akhir, durasi, frame konfirmasi awal, puncak jumlah track, serta penanda masih berlangsung di akhir klip. Catatan manual berada di `reviews/<uuid>.json` pada folder run dan dapat diunduh sebagai CSV. Satu batch perbandingan memiliki `comparison.json`, `comparison.csv`, dan folder run masing-masing.
+
+Status run: `running`, `completed`, `failed`, atau `cancelled`. Tulis `completed` setelah semua keluaran wajib selesai ditulis dan dapat dibaca. Jika pembacaan berhenti tidak wajar atau writer gagal, simpan status `failed` dan penjelasan. Pembatalan kooperatif menyimpan status `cancelled`, jumlah frame aktual, dan CSV parsial. Video parsial tidak diterbitkan sebagai video sukses; evaluator menolak run yang belum `completed`.
 
 Reader, writer, dan berkas sementara harus ditutup setelah sukses maupun gagal. Video diproses dan ditulis bertahap, tanpa menyimpan seluruh frame di memori. Batas ukuran unggahan dibuat jelas dan dapat dikonfigurasi; validasi mencakup decoder, bukan hanya ekstensi file.
 
@@ -377,6 +407,44 @@ Implementasi CLI sekarang menerima MP4 lokal CFR dengan dimensi genap untuk H.26
 
 Contoh pesan yang harus informatif: video tidak dapat dibaca, FPS tidak valid, garis bertitik sama, bobot belum tersedia, perangkat GPU tidak tersedia, atau video keluaran gagal ditulis. Tampilan untuk pengguna menjelaskan tindakan perbaikan; detail exception dapat dicatat untuk diagnosis.
 
+### 13.1 Pengaturan dan pemeriksaan hasil
+
+- Mode **Kustom** menyediakan drag P1/P2 atau kontrol angka. Profil evaluasi yang dibekukan mempertahankan garisnya. Area jalan indikator macet dapat digeser melalui dua sudut biru atau diatur dengan angka.
+- **Uji singkat** menganalisis 3, 5, atau 10 detik awal. Periksa garis, hasil tracking, dan area sebelum menjalankan seluruh video.
+- **Perbandingan metode** menjalankan none/CLAHE, ByteTrack/DeepSORT, atau empat kombinasi secara berurutan dengan sumber, garis, ROI, serta batas waktu sama. Selisih jumlah dan processing FPS belum menunjukkan akurasi; gunakan GT yang sesuai untuk evaluasi run penuh.
+- Tab **Grafik waktu**, **Lalu lintas**, dan **Diagnostik** memakai artefak run yang sama. Tab **Audit crossing** menyediakan catatan sesuai, hitung ganda, salah kelas, terlewat, atau meragukan. Catatan tidak menulis ulang `events.csv` dan tidak otomatis menjadi GT.
+- **Pengaturan model YOLO** memilih profil asal, YOLO11n, atau YOLO11s, dengan kontrol ukuran masukan dan confidence. Pilihan model tidak mengganti garis, ROI, tracker, dan aturan counting. Bobot harus disiapkan secara eksplisit; UI tidak memulai unduhan diam-diam.
+- **Riwayat analisis** membaca run tersimpan di `outputs/`, maksimal 100 terbaru, dengan pencarian nama video/ID. Membuka hasil tidak menjalankan inferensi atau mengubah count; hasil gagal tetap diberi label gagal dan hasil singkat tetap diberi label singkat. Metadata sumber mempertahankan nama unggahan untuk tampilan tanpa memakainya sebagai path kerja.
+- **Lalu lintas** menyediakan daftar kejadian indikasi macet dan pemutar dari dekat awal konfirmasi, beserta frame bukti. Grafik menggunakan nama kolom yang mudah dipahami, sedangkan kontrak CSV tetap memakai nama teknis yang stabil.
+
+### 13.2 Indikator macet awal
+
+`CongestionConfig` opsional, default tidak aktif. Area default `[0.05, 0.45, 0.95, 0.95]`; sesuaikan ke bagian jalan yang benar-benar dipantau detektor. Persyaratan awal: minimal 3 track, keterisian gabungan box minimal 15%, minimal 65% track dengan riwayat cukup bergerak tidak lebih dari 0.15 diagonal box/detik, dan kondisi bertahan 3 detik. Riwayat gerak memakai jendela 2 detik, minimal 1 detik serta 3 observasi; minimal separuh track saat ini harus memiliki riwayat cukup. Jeda observasi mengikuti `max_crossing_gap_seconds` run dan mereset riwayat. Sampel setiap 0.5 detik video, pemulihan status setelah 2 detik; data gerak tidak cukup langsung membatalkan indikasi macet.
+
+Box hampir identik dengan IoU ≥ 0.85 disaring khusus statistik lalu lintas. Keterisian memakai gabungan area box pada raster 128×128 sehingga overlap tidak dijumlahkan dua kali. Counting tetap mengikuti modul domain dan event log. Status: belum cukup data, sepi, lancar, gerak lambat, padat, atau indikasi macet. Satu kendaraan berhenti tidak memenuhi ambang awal macet.
+
+Ini heuristik untuk kamera diam. Perspektif, guncangan kamera, pergantian ID, oklusi, kendaraan parkir, dan pilihan area memengaruhi hasil. Antrean lampu merah juga dapat memicu indikator; sistem belum membedakan penyebab antrean. Jangan menyebutnya pengukuran kecepatan fisik atau detektor macet dengan akurasi terukur sebelum tersedia anotasi status lalu lintas. Preset lokal `vehicles-3-congestion.yaml` mengikuti area antrean pada `vehicles-3-bytetrack-test.mp4`; sumber video tetap mengikuti metadata lokal tim.
+
+### 13.3 Antrean dan pembatalan
+
+Satu antrean aplikasi berada di `outputs/jobs/`, dengan maksimal empat pekerjaan aktif dan satu pekerjaan aktif per sesi. Status pekerjaan: `preparing`, `queued`, `running`, `cancel_requested`, `completed`, `failed`, `cancelled`; status ini terpisah dari status run. Video sumber disalin ke folder pekerjaan, konfigurasi dibekukan, dan urutan mengikuti waktu pengiriman. Batas video antrean 100 MB. Hasil UI baru berada di `outputs/jobs/<job_id>/runs/<run_id>/` atau folder batch di pekerjaan itu; hasil UI lama tetap dapat dibuka.
+
+Satu manager memegang kunci OS, kemudian menjalankan satu subprocess inferensi sekaligus. SQLite menjaga transisi status, progres, serta hasil lintas sesi. Manager yang dimulai ulang mempertahankan slot executor yang masih hidup berdasarkan PID, waktu pembuatan, dan argumen proses; proses/penyalinan sumber yang terhenti ditandai gagal. UI memeriksa progres berkala tanpa menjalankan model pada thread tampilan. CLI langsung tetap sinkron dan berada di luar antrean UI.
+
+Tombol batal hanya mengendalikan pekerjaan sesi yang mengirimnya. Pembatalan menunggu operasi/frame yang sedang berjalan, lalu menyimpan hasil parsial. Setelah sesi browser berganti, hasil yang selesai tetap dapat ditemukan melalui riwayat. Folder pekerjaan dan sumber dipertahankan agar bisa ditinjau/diberi label; ruang penyimpanan perlu dikelola tim, bukan dihapus otomatis ketika tab ditutup.
+
+### 13.4 Zona dan heatmap
+
+`traffic_zones` berisi maksimal empat `TrafficZoneConfig` dengan ID unik, nama, dan poligon sederhana 3–12 titik ternormalisasi. Poligon bersilangan/luas nyaris nol ditolak. Setiap zona memakai anchor aktual, riwayat gerak, keterisian mask, serta state macet sendiri. Raster gabungan box dipotong mask poligon; denominator adalah area mask zona. `traffic_zones.csv` dan `traffic_zone_episodes.csv` menyertakan ID/nama zona, dan `run.json.traffic_zones` menyimpan ringkasan. Area persegi panjang utama tetap dianalisis terpisah. Zona tumpang tindih bisa mengamati kendaraan sama; jangan menjumlahkannya sebagai kendaraan unik atau count crossing.
+
+`heatmap_enabled` default `false`. Grid 128×128 menambah `1/FPS` detik pada sel anchor yang teramati; sel sama hanya ditambah sekali per frame walaupun ada beberapa ID. `heatmap.npz` menyimpan sel mentah, `heatmap.json` definisi satuan/skala, dan `heatmap.png` overlay frame sumber. Gaussian 5×5 dan normalisasi warna dipakai hanya untuk tampilan relatif dalam run, bukan input detektor. Heatmap bukan peta kecepatan fisik, jaminan macet, atau hitungan kendaraan unik.
+
+### 13.5 Pemeriksaan kualitas dan prapemrosesan
+
+`quality_check` default `true`, memakai maksimal enam sampel pada tiga detik awal, dengan sisi citra maksimal 640 piksel. Histogram/grayscale, entropy, kontras, variansi Laplacian, FFT, dan energi frekuensi tinggi masuk `quality.json`/`quality.png`. ORB + Hamming ratio test dan RANSAC mencari gerak latar bersama pada area atas/sisi gambar, dengan ROI detektor/zona yang diketahui dikeluarkan dari mask fitur. Sedikit fitur menghasilkan status belum cukup data, bukan klaim kamera stabil. Ambang bersifat heuristik dan bagian video setelah sampel belum diperiksa.
+
+Mode `median` memakai ukuran kernel ganjil `gaussian_kernel_size`. Mode `bilateral_clahe` menjalankan bilateral BGR, konversi Lab, CLAHE pada L, lalu kembali BGR; parameter default diameter 5, sigma warna/ruang 35. Panel bukti memakai L sesudah bilateral jika mode ini aktif. Keduanya eksperimen opsional; hasil pada video uji harus dibandingkan, bukan dianggap memperbaiki model. Pemeriksaan kualitas, heatmap, dan zona tidak menambah inferensi YOLO per frame.
+
 ## 14. Data dan anotasi manual
 
 Gunakan rekaman sendiri atau sumber video yang mengizinkan penggunaan untuk tugas akademik. Catat asal, URL bila ada, tanggal pengambilan/akses, izin/lisensi yang diketahui, resolusi, FPS, durasi, dan kondisi pengamatan.
@@ -388,6 +456,12 @@ Set awal yang disarankan: setidaknya satu klip pengembangan dan tiga klip uji, t
 GT event memakai `clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes`. `manual_event_id` bukan Track ID hasil sistem. Simpan konfigurasi garis per klip agar penilaian manual dan program menggunakan lokasi serta arah yang sama.
 
 Kedua anggota tim menghitung atau meninjau crossing pada video lambat, menyelesaikan perbedaan, lalu membekukan GT. Gunakan anchor tengah bawah box secara konseptual agar definisi lewat garis konsisten. Tandai kejadian yang ambigu/tertutup berat sebelum melihat hasil akhir model; jelaskan aturan penyertaannya. Untuk U-turn, anotasi manual mengikuti kebijakan satu kali per kendaraan per garis selama klip, sejauh identitas dapat ditinjau manusia.
+
+### Label bounding box untuk calon fine-tuning
+
+Editor pada tab Audit crossing menerima kotak manual dari frame sumber yang checksum-nya sama dengan run. Frame asli disimpan tanpa overlay/pemrosesan; prediksi YOLO dan catatan crossing tidak diubah otomatis menjadi label. Pemeriksa wajib mengonfirmasi seluruh kotak; daftar kosong yang dikonfirmasi adalah frame negatif. Revisi disimpan terpisah di `outputs/dataset-labels/<uuid>/`, dengan frame, JSON, dan label YOLO normalized `class cx cy width height`.
+
+Ekspor ZIP memakai revisi terakhir per pasangan checksum sumber/frame, menyertakan gambar, label, metadata, dan petunjuk. ID kelas dataset: 0 `car`, 1 `motorcycle`, 2 `bus`, 3 `truck`; ini indeks dataset empat kelas, berbeda dari ID COCO asli. Split belum ditetapkan dan harus dipisah menurut video sumber untuk mencegah kebocoran frame berdekatan. UI membatasi ekspor 200 frame/150 MB. Belum ada training tambahan atau metrik mAP/IDF1 baru yang dihasilkan fitur ini.
 
 ## 15. Evaluasi dan eksperimen
 
@@ -580,6 +654,10 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-08 | UI dan evaluasi awal | Streamlit memakai pipeline yang sama dengan CLI. Evaluator memverifikasi video dan garis terhadap metadata anotasi. Dua klip sudah ditinjau visual awal dan menunggu validasi kedua |
 | 2026-11-08 | Eksperimen yang diizinkan pengguna | DeepSORT ditambahkan sebagai opsi pembanding. ByteTrack `fuse_score: true` tetap pilihan utama. Uji aktual dan keterbatasan dicatat di docs/tracker-safety-evaluation.md |
 | 2026-11-08 | Audit crossing | Pasangan temporal dibedakan dari identitas terverifikasi. Audit koordinat dan frame ditambahkan tanpa mengubah sumber hitungan, kontrak events.csv, atau anotasi yang sudah dibekukan |
+| 2026-11-15 | Instruksi dan implementasi pengguna | Tambahkan editor garis, uji singkat, diagnostik, perbandingan metode, catatan manual, grafik waktu, dan indikator macet berbasis gerak/keterisian. ByteTrack fuse_score true tetap default; indikator bukan kecepatan fisik |
+| 2026-11-15 | Penundaan pengguna | Pembuatan laporan/PDF ditunda; fokus fitur aplikasi dan pengujiannya |
+| 2026-11-15 | Penyempurnaan pengguna | Bandingkan YOLO11n/YOLO11s tanpa mengubah GT, garis, tracker, atau aturan crossing. YOLO11n tetap default setelah uji awal. Tambahkan riwayat run dan rentang indikasi macet; durasi status run baru mencakup sisa interval sampai akhir video |
+| 2026-11-16 | Perluasan pengguna | Tambahkan antrean/batal, zona per lajur, heatmap, kualitas video, dan label frame manual. Gunakan histogram/Laplacian/FFT/ORB serta filter tambahan yang diuji; pertahankan default model/prapemrosesan karena eksperimen belum menunjukkan peningkatan konsisten. Laporan PDF tetap ditunda |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 

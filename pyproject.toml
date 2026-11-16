@@ -12,7 +12,7 @@ dependencies = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
 
 [project.optional-dependencies]
 vision = ["opencv-python>=4.8,<5"]
-ui = ["streamlit>=1.49,<2", "pandas>=2,<4"]
+ui = ["streamlit>=1.49,<2", "pandas>=2,<4", "psutil>=7,<8"]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 deepsort = [
     "deep-sort-realtime==1.3.2", "scipy>=1.11,<2", "setuptools>=68,<81",
@@ -29,6 +29,9 @@ vehicle-counter = "vehicle_counter.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+vehicle_counter = ["editor/*.html", "editor/shapes/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

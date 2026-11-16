@@ -62,8 +62,16 @@ def render_evidence(
         cv2.putText(panel, label, position, cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 0, 0), 3)
         cv2.putText(panel, label, position, cv2.FONT_HERSHEY_SIMPLEX, 0.44, color, 1, cv2.LINE_AA)
 
-    luminance = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)[:, :, 0]
-    clahe_active = config.mode == "clahe"
+    luminance_source = source
+    if config.mode == "bilateral_clahe":
+        luminance_source = cv2.bilateralFilter(
+            source,
+            config.bilateral_diameter,
+            config.bilateral_sigma_color,
+            config.bilateral_sigma_space,
+        )
+    luminance = cv2.cvtColor(luminance_source, cv2.COLOR_BGR2LAB)[:, :, 0]
+    clahe_active = config.mode in ("clahe", "bilateral_clahe")
     clahe_title = "03  CLAHE | L sesudah" if clahe_active else "03  CLAHE | tidak aktif"
     clahe_panel = (
         thumbnail(apply_clahe_luminance(luminance, config))
@@ -105,7 +113,9 @@ def render_evidence(
         ("01  Frame sumber", "Video didekode sebagai BGR 8-bit", thumbnail(source)),
         (
             "02  Ruang warna | BGR ke Lab",
-            "Kanal L: kecerahan, dipisahkan dari warna",
+            "Bilateral lebih dahulu | kanal L"
+            if config.mode == "bilateral_clahe"
+            else "Kanal L: kecerahan, dipisahkan dari warna",
             thumbnail(luminance),
         ),
         (clahe_title, clahe_note, clahe_panel),

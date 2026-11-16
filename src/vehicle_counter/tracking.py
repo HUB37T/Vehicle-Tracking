@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Protocol
+from uuid import uuid4
 
 import numpy as np
 import yaml
@@ -44,25 +45,35 @@ def resolve_weights(value: str) -> Path:
     )
 
 
-def prepare_model(directory: str | Path = "models", *, source: str = "huggingface") -> Path:
-    """Explicitly download the official YOLO11n weights, never during video analysis."""
+def prepare_model(
+    directory: str | Path = "models", *, source: str = "huggingface", variant: str = "yolo11n"
+) -> Path:
+    """Explicitly prepare official detection weights, never during video analysis."""
+    if variant not in ("yolo11n", "yolo11s"):
+        raise ValueError("Varian harus yolo11n atau yolo11s.")
     if source not in ("huggingface", "github"):
         raise ValueError("Sumber bobot harus huggingface atau github.")
     directory = Path(directory).expanduser().resolve()
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / "yolo11n.pt"
+    filename = f"{variant}.pt"
+    target = directory / filename
     if target.is_file():
         if target.stat().st_size < 1024 * 1024:
             raise ValueError(
                 "Bobot lokal terlalu kecil; periksa berkas atau gunakan direktori lain."
             )
+        provenance_path = target.with_suffix(".pt.source.json")
+        if provenance_path.is_file():
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            if file_sha256(target) != provenance["sha256"]:
+                raise ValueError("Checksum bobot lokal berubah. Siapkan ulang di direktori lain.")
         return target
     if source == "github":
         from ultralytics.utils.downloads import attempt_download_asset
 
         downloaded = Path(attempt_download_asset(str(target), release="v8.3.0"))
         provenance = {
-            "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+            "source_url": f"https://github.com/ultralytics/assets/releases/download/v8.3.0/{filename}",
             "release": "v8.3.0",
         }
     elif source == "huggingface":
@@ -74,22 +85,31 @@ def prepare_model(directory: str | Path = "models", *, source: str = "huggingfac
         info_response.raise_for_status()
         info = info_response.json()
         revision = info["sha"]
-        entry = next(item for item in info["siblings"] if item["rfilename"] == "yolo11n.pt")
+        entry = next((item for item in info["siblings"] if item["rfilename"] == filename), None)
+        if entry is None:
+            raise ValueError(f"Bobot {filename} tidak tersedia di repositori resmi.")
         expected_sha = entry["lfs"]["sha256"]
-        url = f"https://huggingface.co/Ultralytics/YOLO11/resolve/{revision}/yolo11n.pt"
-        temporary = target.with_suffix(".pt.download")
-        with requests.get(url, stream=True, timeout=(15, 60)) as response:
-            response.raise_for_status()
-            with temporary.open("wb") as handle:
-                for block in response.iter_content(chunk_size=1024 * 1024):
-                    handle.write(block)
-        if file_sha256(temporary) != expected_sha:
-            raise RuntimeError("Checksum unduhan bobot berbeda dari metadata resmi Hugging Face.")
-        temporary.replace(target)
+        url = f"https://huggingface.co/Ultralytics/YOLO11/resolve/{revision}/{filename}"
+        temporary = target.with_suffix(f".pt.{uuid4().hex}.download")
+        try:
+            with requests.get(url, stream=True, timeout=(15, 60)) as response:
+                response.raise_for_status()
+                with temporary.open("xb") as handle:
+                    for block in response.iter_content(chunk_size=1024 * 1024):
+                        handle.write(block)
+            if file_sha256(temporary) != expected_sha:
+                raise RuntimeError(
+                    "Checksum unduhan bobot berbeda dari metadata resmi Hugging Face."
+                )
+            if temporary.stat().st_size < 1024 * 1024:
+                raise RuntimeError("Unduhan bobot terlalu kecil.")
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
         downloaded = target
         provenance = {"source_url": url, "revision": revision, "expected_sha256": expected_sha}
     if not downloaded.is_file() or downloaded.stat().st_size < 1024 * 1024:
-        raise RuntimeError("Unduhan bobot YOLO11n tidak menghasilkan berkas yang valid.")
+        raise RuntimeError(f"Unduhan bobot {variant} tidak menghasilkan berkas yang valid.")
     write_json(
         target.with_suffix(".pt.source.json"),
         {

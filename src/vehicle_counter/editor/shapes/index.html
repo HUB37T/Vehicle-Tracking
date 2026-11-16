@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="id">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <style>
+    body {
+      margin: 0;
+      font: 14px system-ui;
+      color: #e7eaf0;
+      background: transparent;
+    }
+    button,
+    select {
+      padding: 7px;
+      margin: 3px;
+      border: 1px solid #64748b;
+      border-radius: 5px;
+      background: #17202a;
+      color: white;
+    }
+    svg {
+      width: 100%;
+      display: block;
+      touch-action: none;
+      user-select: none;
+      background: #19212c;
+      border-radius: 8px;
+    }
+    text {
+      pointer-events: none;
+      paint-order: stroke;
+      stroke: #111;
+      stroke-width: 3;
+      fill: white;
+      font-weight: 700;
+    }
+    .handle {
+      cursor: grab;
+    }
+    #help {
+      color: #9aa7b8;
+      margin: 8px 0;
+    }
+  </style>
+  <div id="toolbar">
+    <select id="kind" aria-label="Kelas kotak terpilih">
+      <option value="car">Mobil</option>
+      <option value="motorcycle">Motor</option>
+      <option value="bus">Bus</option>
+      <option value="truck">Truk</option></select
+    ><button id="add">Tambah titik</button
+    ><button id="remove">Hapus pilihan</button>
+  </div>
+  <div id="help"></div>
+  <svg
+    id="stage"
+    viewBox="0 0 1000 600"
+    role="group"
+    aria-label="Editor zona dan label kendaraan"
+  >
+    <image id="photo" width="1000" height="600" preserveAspectRatio="none" />
+    <g id="shapes"></g>
+    <g id="handles"></g>
+  </svg>
+  <script>
+    const stage = document.getElementById("stage"),
+      shapes = document.getElementById("shapes"),
+      handles = document.getElementById("handles"),
+      kind = document.getElementById("kind");
+    let args = null,
+      points = [],
+      boxes = [],
+      selected = 0,
+      drag = null,
+      height = 600,
+      start = null;
+    const clamp = (x) => Math.max(0, Math.min(1, x));
+    const send = (type, extra = {}) =>
+      window.parent.postMessage(
+        { isStreamlitMessage: true, type, ...extra },
+        "*",
+      );
+    const make = (tag, props, parent) => {
+      let el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (let k in props) el.setAttribute(k, props[k]);
+      parent.append(el);
+      return el;
+    };
+    const loc = (e) => {
+      let r = stage.getBoundingClientRect();
+      return [
+        clamp((e.clientX - r.left) / r.width),
+        clamp((e.clientY - r.top) / r.height),
+      ];
+    };
+    function publish() {
+      send("streamlit:setComponentValue", {
+        value: {
+          ...(args.mode === "polygon" ? { polygon: points } : { boxes }),
+          edit_id: crypto.randomUUID(),
+        },
+        dataType: "json",
+      });
+    }
+    function handle(x, y, id, label) {
+      let el = make(
+        "circle",
+        {
+          cx: x * 1000,
+          cy: y * height,
+          r: 11,
+          fill: "#55baff",
+          stroke: "#17202a",
+          "stroke-width": 3,
+          tabindex: 0,
+          role: "slider",
+          "aria-label": label,
+          "aria-valuemin": 0,
+          "aria-valuemax": 1,
+          "aria-valuenow": x,
+          "aria-valuetext": `X ${x.toFixed(2)} Y ${y.toFixed(2)}`,
+        },
+        handles,
+      );
+      el.dataset.handle = id;
+      el.classList.add("handle");
+      el.addEventListener("keydown", (e) => {
+        let d = {
+          ArrowLeft: [-0.01, 0],
+          ArrowRight: [0.01, 0],
+          ArrowUp: [0, -0.01],
+          ArrowDown: [0, 0.01],
+        }[e.key];
+        if (d) {
+          e.preventDefault();
+          move(id, [clamp(x + d[0]), clamp(y + d[1])]);
+          handles.querySelector(`[data-handle="${id}"]`)?.focus();
+          publish();
+        }
+      });
+    }
+    function draw() {
+      let focused = document.activeElement?.dataset.handle;
+      shapes.replaceChildren();
+      handles.replaceChildren();
+      for (const z of args.overlays || []) {
+        make(
+          "polygon",
+          {
+            points: z.polygon
+              .map((p) => `${p[0] * 1000},${p[1] * height}`)
+              .join(" "),
+            fill: "#22c55e15",
+            stroke: "#65cba0",
+            "stroke-width": 2,
+          },
+          shapes,
+        );
+      }
+      if (args.mode === "polygon") {
+        make(
+          "polygon",
+          {
+            points: points
+              .map((p) => `${p[0] * 1000},${p[1] * height}`)
+              .join(" "),
+            fill: "#168cff33",
+            stroke: "#55baff",
+            "stroke-width": 3,
+          },
+          shapes,
+        );
+        points.forEach((p, i) => {
+          handle(
+            ...p,
+            "p" + i,
+            `Titik zona ${i + 1} X ${p[0].toFixed(2)} Y ${p[1].toFixed(2)}`,
+          );
+          let t = make(
+            "text",
+            {
+              x: p[0] * 1000 + 14,
+              y: Math.max(20, p[1] * height - 14),
+              "font-size": 20,
+            },
+            shapes,
+          );
+          t.textContent = i + 1;
+        });
+      } else {
+        boxes.forEach((box, i) => {
+          let [x1, y1, x2, y2] = box.bbox;
+          let r = make(
+            "rect",
+            {
+              x: x1 * 1000,
+              y: y1 * height,
+              width: (x2 - x1) * 1000,
+              height: (y2 - y1) * height,
+              fill: i === selected ? "#facc1522" : "#168cff11",
+              stroke: i === selected ? "#facc15" : "#55baff",
+              "stroke-width": 3,
+            },
+            shapes,
+          );
+          r.dataset.box = i;
+          let t = make(
+            "text",
+            {
+              x: x1 * 1000 + 4,
+              y: Math.max(20, y1 * height - 6),
+              "font-size": 20,
+            },
+            shapes,
+          );
+          t.textContent = `${i + 1} ${box.class_name}`;
+          if (i === selected) {
+            handle(x1, y1, "a", "Sudut kiri atas kotak");
+            handle(x2, y2, "b", "Sudut kanan bawah kotak");
+          }
+        });
+        kind.value = boxes[selected]?.class_name || kind.value;
+      }
+      if (focused) handles.querySelector(`[data-handle="${focused}"]`)?.focus();
+    }
+    function move(id, p) {
+      if (args.mode === "polygon") {
+        selected = Number(id.slice(1));
+        points[selected] = p;
+      } else {
+        let b = boxes[selected].bbox;
+        if (id === "a") {
+          b[0] = Math.min(p[0], b[2] - 0.002);
+          b[1] = Math.min(p[1], b[3] - 0.002);
+        } else {
+          b[2] = Math.max(p[0], b[0] + 0.002);
+          b[3] = Math.max(p[1], b[1] + 0.002);
+        }
+      }
+      draw();
+    }
+    stage.addEventListener("pointerdown", (e) => {
+      if (e.target.dataset.handle) {
+        drag = e.target.dataset.handle;
+        if (args.mode === "polygon") selected = Number(drag.slice(1));
+        e.preventDefault();
+        stage.setPointerCapture(e.pointerId);
+      } else if (args.mode === "boxes") {
+        if (e.target.dataset.box !== undefined) {
+          selected = Number(e.target.dataset.box);
+          draw();
+        } else {
+          start = loc(e);
+          drag = "new";
+          stage.setPointerCapture(e.pointerId);
+        }
+      }
+    });
+    stage.addEventListener("pointermove", (e) => {
+      if (drag && drag !== "new") move(drag, loc(e));
+    });
+    stage.addEventListener("pointerup", (e) => {
+      if (drag === "new") {
+        let end = loc(e);
+        if (
+          Math.abs(end[0] - start[0]) > 0.003 &&
+          Math.abs(end[1] - start[1]) > 0.003
+        ) {
+          boxes.push({
+            class_name: kind.value,
+            bbox: [
+              Math.min(start[0], end[0]),
+              Math.min(start[1], end[1]),
+              Math.max(start[0], end[0]),
+              Math.max(start[1], end[1]),
+            ],
+          });
+          selected = boxes.length - 1;
+        }
+      }
+      if (drag) {
+        drag = null;
+        draw();
+        publish();
+      }
+    });
+    stage.addEventListener("pointercancel", () => {
+      drag = null;
+    });
+    kind.addEventListener("change", () => {
+      if (boxes[selected]) {
+        boxes[selected].class_name = kind.value;
+        draw();
+        publish();
+      }
+    });
+    document.getElementById("remove").onclick = () => {
+      if (args.mode === "polygon") {
+        if (points.length > 3)
+          points.splice(Math.min(selected, points.length - 1), 1);
+      } else boxes.splice(selected, 1);
+      selected = Math.max(0, selected - 1);
+      draw();
+      publish();
+    };
+    document.getElementById("add").onclick = () => {
+      if (points.length >= 12) return;
+      let a = points[selected],
+        b = points[(selected + 1) % points.length];
+      points.splice(selected + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+      selected++;
+      draw();
+      publish();
+    };
+    window.addEventListener("message", (e) => {
+      if (e.source !== window.parent || e.data.type !== "streamlit:render")
+        return;
+      args = e.data.args;
+      points = (args.polygon || []).map((p) => [...p]);
+      boxes = (args.boxes || []).map((b) => ({
+        class_name: b.class_name,
+        bbox: [...b.bbox],
+      }));
+      selected = Math.min(
+        selected,
+        Math.max(0, (args.mode === "polygon" ? points : boxes).length - 1),
+      );
+      kind.style.display = args.mode === "boxes" ? "" : "none";
+      document.getElementById("add").style.display =
+        args.mode === "polygon" ? "" : "none";
+      document.getElementById("help").textContent =
+        args.mode === "polygon"
+          ? "Geser titik mengikuti lajur. Pilih titik untuk menambah/menghapus titik. Poligon tidak boleh bersilangan."
+          : "Pilih kelas, lalu tarik pada gambar untuk membuat kotak. Klik kotak untuk memilih, geser sudut biru untuk memperbaiki.";
+      let img = new Image();
+      img.onload = () => {
+        height = (1000 * img.height) / img.width;
+        stage.setAttribute("viewBox", `0 0 1000 ${height}`);
+        let photo = document.getElementById("photo");
+        photo.setAttribute("height", height);
+        photo.setAttribute("href", args.image);
+        draw();
+        send("streamlit:setFrameHeight", {
+          height: Math.ceil(stage.getBoundingClientRect().height + 100),
+        });
+      };
+      img.src = args.image;
+    });
+    new ResizeObserver(() =>
+      send("streamlit:setFrameHeight", {
+        height: Math.ceil(stage.getBoundingClientRect().height + 100),
+      }),
+    ).observe(stage);
+    send("streamlit:componentReady", { apiVersion: 1 });
+  </script>
+</html>

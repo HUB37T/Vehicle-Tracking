@@ -109,6 +109,9 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
     with Path(result.artifact_paths["crossing_audit"]).open(encoding="utf-8") as handle:
         audit = list(csv.DictReader(handle))
     assert len(audit) == len(events) == manifest["crossing_audit"]["events"]
+    with Path(result.artifact_paths["timeline_csv"]).open(encoding="utf-8") as handle:
+        assert sum(int(row["count"]) for row in csv.DictReader(handle)) == len(events)
+    assert manifest["diagnostics"]["track_observation_instances"] == 12
     assert audit[0]["track_id"] == events[0]["track_id"]
     assert audit[0]["review_reason"] == "detections_unavailable"
     verify_output_video(
@@ -116,6 +119,36 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
     )
     with VideoReader(Path(result.artifact_paths["annotated_video"])) as output:
         assert not np.all(next(iter(output))[1] == 255)
+
+
+def test_preview_stops_at_requested_duration_and_records_scope(synthetic_video, tmp_path):
+    result = process_video(
+        synthetic_video,
+        RunConfig(),
+        tmp_path / "short",
+        tracker_factory=SyntheticTracker,
+        max_seconds=0.4,
+    )
+    assert result.status == "completed"
+    info = json.loads(Path(result.artifact_paths["run_json"]).read_text())
+    assert info["processed_frames"] == 4
+    assert info["video_metadata"]["frame_count"] == 12
+    assert info["analysis_scope"] == {"kind": "preview", "max_seconds": 0.4}
+    assert info["analyzed_duration_seconds"] == 0.4
+    verify_output_video(
+        Path(result.artifact_paths["annotated_video"]), inspect_video(synthetic_video), 4
+    )
+
+
+def test_congestion_exports_diagnostics_without_changing_counts(synthetic_video, tmp_path):
+    config = replace(RunConfig(), congestion=replace(RunConfig().congestion, enabled=True))
+    result = process_video(
+        synthetic_video, config, tmp_path / "traffic", tracker_factory=SyntheticTracker
+    )
+    assert result.status == "completed" and result.summary.total == 1
+    with Path(result.artifact_paths["traffic_csv"]).open(encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows and all(row["status"] != "congested" for row in rows)
 
 
 def test_processing_again_uses_new_run_and_fresh_counter(synthetic_video, tmp_path):

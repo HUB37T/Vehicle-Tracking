@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 VEHICLE_CLASSES = ("car", "motorcycle", "bus", "truck")
 DIRECTIONS = ("A_TO_B", "B_TO_A")
-PREPROCESS_MODES = ("none", "clahe", "gamma", "gaussian", "unsharp")
+PREPROCESS_MODES = ("none", "clahe", "gamma", "gaussian", "unsharp", "median", "bilateral_clahe")
 Point = tuple[float, float]
 BBox = tuple[float, float, float, float]
 
@@ -41,6 +41,9 @@ class PreprocessConfig:
     gamma: float = 0.75
     gaussian_kernel_size: int = 5
     unsharp_amount: float = 0.7
+    bilateral_diameter: int = 5
+    bilateral_sigma_color: float = 35.0
+    bilateral_sigma_space: float = 35.0
 
     def __post_init__(self) -> None:
         if self.mode not in PREPROCESS_MODES:
@@ -65,6 +68,13 @@ class PreprocessConfig:
         for value in tiles:
             _integer(value, "clahe_tile_grid_size", 1)
         object.__setattr__(self, "clahe_tile_grid_size", tiles)
+        _integer(self.bilateral_diameter, "bilateral_diameter", 3)
+        if self.bilateral_diameter > 15 or self.bilateral_diameter % 2 == 0:
+            raise ValueError("bilateral_diameter harus ganjil pada rentang 3–15.")
+        for name in ("bilateral_sigma_color", "bilateral_sigma_space"):
+            _finite(getattr(self, name), name, 0)
+            if not 0 < getattr(self, name) <= 255:
+                raise ValueError(f"{name} harus pada rentang (0, 255].")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +103,71 @@ class CountingLineConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CongestionConfig:
+    enabled: bool = False
+    roi: BBox = (0.05, 0.45, 0.95, 0.95)
+    min_vehicles: int = 3
+    min_occupancy: float = 0.15
+    slow_speed: float = 0.15
+    min_slow_fraction: float = 0.65
+    motion_window_seconds: float = 2.0
+    min_motion_seconds: float = 1.0
+    hold_seconds: float = 3.0
+    recovery_seconds: float = 2.0
+    sample_seconds: float = 0.5
+
+    def __post_init__(self) -> None:
+        if type(self.enabled) is not bool:
+            raise ValueError("congestion.enabled harus boolean.")
+        roi = tuple(self.roi)
+        if len(roi) != 4:
+            raise ValueError("congestion.roi memerlukan empat koordinat.")
+        for value in roi:
+            _finite(value, "congestion.roi", 0)
+        if not (roi[0] < roi[2] <= 1 and roi[1] < roi[3] <= 1):
+            raise ValueError("congestion.roi harus terurut pada rentang 0-1.")
+        object.__setattr__(self, "roi", roi)
+        _integer(self.min_vehicles, "min_vehicles", 2)
+        for name in ("min_occupancy", "min_slow_fraction"):
+            value = getattr(self, name)
+            _finite(value, name, 0)
+            if not 0 < value <= 1:
+                raise ValueError(f"{name} harus berada pada rentang (0, 1].")
+        for name in (
+            "slow_speed",
+            "motion_window_seconds",
+            "min_motion_seconds",
+            "hold_seconds",
+            "recovery_seconds",
+            "sample_seconds",
+        ):
+            value = getattr(self, name)
+            _finite(value, name, 0)
+            if value <= 0:
+                raise ValueError(f"{name} harus lebih besar dari nol.")
+        if self.min_motion_seconds > self.motion_window_seconds:
+            raise ValueError("min_motion_seconds melebihi motion_window_seconds.")
+
+
+@dataclass(frozen=True, slots=True)
+class TrafficZoneConfig:
+    zone_id: str = "zone-1"
+    name: str = "Lajur 1"
+    polygon: tuple[Point, ...] = ((0.05, 0.45), (0.48, 0.45), (0.48, 0.95), (0.05, 0.95))
+
+    def __post_init__(self):
+        from vehicle_counter.polygons import validated_polygon
+
+        for name in ("zone_id", "name"):
+            _nonempty(getattr(self, name), name)
+            if len(getattr(self, name)) > 80:
+                raise ValueError(f"{name} terlalu panjang.")
+        if not all(c.isalnum() or c in "-_" for c in self.zone_id):
+            raise ValueError("zone_id hanya boleh huruf, angka, '-' dan '_'.")
+        object.__setattr__(self, "polygon", validated_polygon(self.polygon))
+
+
+@dataclass(frozen=True, slots=True)
 class RunConfig:
     model_weights: str = "yolo11n.pt"
     tracker_config: str = "bytetrack.yaml"
@@ -107,6 +182,10 @@ class RunConfig:
     deduplicate_crossings: bool = False
     truck_review_weights: str | None = None
     detection_roi: BBox | None = None
+    congestion: CongestionConfig = field(default_factory=CongestionConfig)
+    traffic_zones: tuple[TrafficZoneConfig, ...] = ()
+    heatmap_enabled: bool = False
+    quality_check: bool = True
 
     def __post_init__(self) -> None:
         for name in ("model_weights", "tracker_config", "device"):
@@ -140,6 +219,17 @@ class RunConfig:
             raise ValueError("preprocess harus berupa PreprocessConfig.")
         if not isinstance(self.counting_line, CountingLineConfig):
             raise ValueError("counting_line harus berupa CountingLineConfig.")
+        if not isinstance(self.congestion, CongestionConfig):
+            raise ValueError("congestion harus berupa CongestionConfig.")
+        zones = tuple(self.traffic_zones)
+        if len(zones) > 4 or any(not isinstance(z, TrafficZoneConfig) for z in zones):
+            raise ValueError("traffic_zones berisi maksimal empat TrafficZoneConfig.")
+        if len({z.zone_id for z in zones}) != len(zones):
+            raise ValueError("zone_id harus unik.")
+        for name in ("heatmap_enabled", "quality_check"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} harus boolean.")
+        object.__setattr__(self, "traffic_zones", zones)
 
 
 @dataclass(frozen=True, slots=True)

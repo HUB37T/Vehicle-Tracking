@@ -6,7 +6,7 @@ Pengguna mengunggah rekaman jalan dari kamera diam, mengatur garis virtual, lalu
 
 ## Status proyek
 
-CLI video mendukung YOLO11n pretrained, ByteTrack, DeepSORT opsional, penghitung dua arah, lima mode prapemrosesan, ekspor CSV/JSON, dan MP4 beranotasi. CLI juga menyediakan praktikum pengolahan citra klasik dari dua frame. Integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
+CLI video mendukung YOLO11n pretrained, ByteTrack, DeepSORT opsional, penghitung dua arah, tujuh mode prapemrosesan, ekspor CSV/JSON, dan MP4 beranotasi. UI menyediakan antrean/batal, zona macet per lajur, heatmap, kualitas video, dan editor label manual. Integrasi diuji pada Python 3.12 di Windows dengan PyTorch CPU.
 
 Analisis bisa dijalankan lewat CLI atau antarmuka lokal Streamlit. Evaluasi awal terhadap anotasi manual tersedia untuk dua klip jalan. Lihat [hasil evaluasi awal](docs/counting-evaluation.md).
 
@@ -60,6 +60,14 @@ Dari lingkungan fondasi yang sudah terpasang, gunakan CPU untuk baseline:
 
 Persiapan bobot membutuhkan internet. Default mengunduh dari repositori resmi `Ultralytics/YOLO11` di Hugging Face, mengunci revision dan memverifikasi SHA256 dari metadata resminya. Alternatif distribusi GitHub tersedia melalui `prepare-model --source github`. Bobot disimpan lokal di `models/yolo11n.pt`; analisis video memakai berkas lokal dan tidak memulai unduhan model diam-diam.
 
+YOLO11n tetap model bawaan. YOLO11s pretrained tersedia sebagai pembanding yang lebih besar dari [keluarga YOLO11 resmi](https://docs.ultralytics.com/models/yolo11/). Siapkan secara eksplisit:
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli prepare-model --variant yolo11s
+```
+
+Pilih melalui **Pengaturan model YOLO**. Ukuran masukan dan confidence dapat diatur sebelum run. CLI menyediakan `--weights models/yolo11s.pt --imgsz 960 --conf 0.1`. Pengunduhan memverifikasi checksum sebelum mempromosikan berkas dan memeriksa checksum cache bila metadata sumber tersedia. Ini penggunaan bobot pretrained; belum ada fine-tuning model tim.
+
 Setelah ada video jalan:
 
 ```powershell
@@ -99,6 +107,18 @@ Untuk memakai salah satu mode pada inferensi, tambahkan `--preprocess`. Pilih sa
 
 Konfigurasi `gamma` di bawah 1 mencerahkan midtone. `gaussian_kernel_size` mengatur ukuran kernel Gaussian yang juga dipakai pada `unsharp`. `unsharp_amount` mengatur kekuatan penajaman. Hasil `analyze` tetap menghitung crossing berdasarkan YOLO dan ByteTrack. Pengaruh setiap mode terhadap akurasi memerlukan pembanding berupa hitungan manual.
 
+Mode `median` menambah eksperimen pengurangan noise impuls. `bilateral_clahe` menjalankan bilateral BGR sebelum CLAHE pada kanal L di Lab; diameter default 5, sigma warna/ruang 35. Bilateral berusaha menghaluskan noise sambil menjaga tepi, tetapi tetap dapat menghilangkan detail yang dibutuhkan detektor. Kedua mode tersedia di praktikum, CLI, dan profil UI **Kustom**; default tetap sama. Gunakan **CLAHE vs prapemrosesan terpilih** untuk membandingkan dalam satu antrean dengan geometri/config lainnya sama.
+
+### Pemeriksaan kualitas tanpa YOLO
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli inspect-quality data/videos/vehicles.mp4
+```
+
+Pemeriksaan memakai maksimal enam sampel pada tiga detik awal, ukuran maksimal 640 piksel. Panel menunjukkan grayscale, histogram, Laplacian, FFT, dan pencocokan ORB + Hamming + RANSAC pada fitur latar. `quality.json` menyimpan pengukuran serta peringatan cahaya/kontras/detail rendah dan kandidat gerak latar. Area polos bisa menyerupai blur; kendaraan/pohon bergerak dapat mengganggu pemeriksaan latar. Sedikit fitur menghasilkan keterangan belum cukup data. Ini petunjuk awal, bukan skor akurasi atau jaminan kamera stabil sepanjang video.
+
+Analisis normal menyertakan `quality.png`/`quality.json` secara default. UI juga memiliki tombol **Periksa kualitas video sebelum analisis**. Hilangkan centang pemeriksaan atau gunakan CLI `--no-quality-check` untuk melewatinya. Pemeriksaan tidak memilih prapemrosesan secara otomatis.
+
 ## Menjalankan antarmuka Streamlit
 
 Setelah menyiapkan CPU PyTorch dan bobot model seperti pada instalasi tracking:
@@ -108,7 +128,67 @@ Setelah menyiapkan CPU PyTorch dan bobot model seperti pada instalasi tracking:
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hingga 100 MB. Geser koordinat P1/P2 sambil melihat preview, pilih prapemrosesan, lalu tekan **Mulai analisis**. Rekap, video, panel bukti, dan unduhan muncul setelah proses selesai. Folder hasil UI berada di `outputs/ui/<run_id>/`.
+Buka `http://127.0.0.1:8501`. Pilih video dari `data/videos/` atau unggah MP4 hingga 100 MB. Pada profil **Kustom**, geser titik P1/P2 langsung di gambar atau gunakan kontrol angka, lalu pilih prapemrosesan. Profil evaluasi mempertahankan garis yang dibekukan. Jalankan **Uji singkat** (3/5/10 detik awal) untuk mengecek pengaturan, lalu **Mulai analisis** untuk video penuh. Permintaan masuk antrean dan hasil baru berada di `outputs/jobs/<job_id>/`; hasil UI lama di `outputs/ui/` tetap terbaca.
+
+### Antrean dan tombol batal
+
+Antrean aplikasi menjalankan satu pekerjaan inferensi pada satu waktu, termasuk seluruh batch perbandingan. Maksimal empat pekerjaan aktif, satu per sesi. Progres dan preview diperbarui berkala; widget tetap dapat dipakai. **Batalkan pekerjaan** langsung membatalkan permintaan yang menunggu, atau meminta proses berjalan berhenti setelah operasi/frame saat ini. Hitungan parsial dan metadata disimpan sebagai `cancelled`; video parsial tidak disajikan sebagai hasil sukses dan evaluator menolaknya.
+
+Pekerjaan menyimpan salinan video serta konfigurasi saat dikirim; perubahan widget tidak mengubah pekerjaan lama. Worker dapat meneruskan proses saat tab ditutup, tetapi kontrol batal milik sesi pengirim. Jika sesi berganti, hasil selesai dapat dicari lewat riwayat. `outputs/jobs/` berisi SQLite, folder sumber, log, progres, dan hasil; jaga folder ini jika ingin mempertahankan riwayat/sumber pelabelan. Data tidak otomatis dihapus saat tab ditutup, sehingga penyimpanan perlu dikelola tim. CLI `analyze` langsung tetap sinkron dan berada di luar antrean UI.
+
+- **Perbandingan metode** menjalankan none vs CLAHE, ByteTrack vs DeepSORT, atau empat kombinasi dengan video, garis, area, dan durasi yang sama. DeepSORT membutuhkan dependensi opsional di bawah. Tabel membandingkan jumlah serta waktu pemrosesan; penilaian akurasi membutuhkan anotasi manual. Gunakan run penuh untuk evaluasi GT seluruh video.
+- **YOLO11n vs YOLO11s** pada perbandingan metode memakai konfigurasi sama dan menampilkan nama model, ukuran masukan, confidence, serta checksum bobot. Kedua bobot harus tersedia lokal. Jangan menilai model hanya dari jumlah deteksi atau crossing yang lebih banyak.
+- **Riwayat analisis** dapat mencari dan membuka kembali hingga 100 run terbaru di `outputs/`, termasuk run singkat dan hasil gagal. Hasil yang dibuka memakai konfigurasi run tersimpan; pengaturan percobaan baru tidak mengubahnya. Folder run yang dipindah tetap bisa dibuka jika berkas hasilnya lengkap.
+- **Grafik waktu** menampilkan crossing per interval 5 detik dari event otomatis. **Diagnostik** membantu memeriksa deteksi kosong, track belum muncul, posisi terhadap garis, dan jeda ID. Petunjuk ini belum membuktikan penyebab semua kesalahan.
+- **Audit crossing** menyediakan catatan pemeriksaan manual termasuk kendaraan terlewat. Catatan tersimpan sebagai riwayat terpisah dan dapat diunduh; hitungan otomatis tetap bersumber dari `events.csv`.
+- Keluaran tambahan berupa `timeline.csv`, `diagnostics.json`, dan `traffic.csv` jika indikator macet aktif. Hasil uji singkat diberi label khusus dan tidak dianggap hitungan seluruh video. Pembuatan laporan PDF ditunda.
+
+### Mencoba indikator macet
+
+Aktifkan **Indikator macet**, lalu pilih area jalan dengan dua sudut biru pada preview. Hindari langit, trotoar, atau area kosong yang luas, dan pilih area yang juga dipantau detektor. Atur ambang di **Pengaturan indikator macet** jika sudut kamera berbeda. Status serta grafik muncul pada tab **Lalu lintas** dan overlay video hasil.
+
+Indikator awal menggabungkan minimal 3 track, keterisian area minimal 15%, dan minimal 65% track bergerak lambat selama 3 detik. Kecepatan relatif dihitung dari perpindahan pusat box terhadap diagonal box, dengan riwayat minimal 1 detik. Ini belum mengukur km/jam. Kamera harus diam; ID terputus, perspektif, parkir, antrean lampu merah, dan pemilihan area dapat memengaruhi hasil. Ambang memerlukan validasi per kamera; belum ada metrik akurasi macet.
+
+Tab **Lalu lintas** juga mencatat rentang waktu indikasi macet, durasi, jumlah track tertinggi, dan apakah kondisi masih teramati pada akhir klip. Pilih kejadian untuk memutar video dari dekat awalnya dan memeriksa frame konfirmasi. Rentang dimulai setelah syarat durasi terpenuhi, bukan sejak awal kendaraan melambat. CSV `traffic_episodes.csv` menyimpan rentang yang sama. Durasi status menggunakan status sampel sampai sampel berikutnya atau akhir video yang dianalisis; ketelitian perubahan status mengikuti interval sampel 0.5 detik. Run lama tetap memakai ringkasan yang dibuat saat itu.
+
+Uji lokal pada 15 November 2026 membandingkan kedua model pada dua klip penuh dengan ByteTrack `fuse_score: true` dan CLAHE. Hujan: YOLO11n TP/FP/FN = 7/0/0, YOLO11s = 6/0/1 (masukan 960). Istanbul: 5/5/0 versus 5/4/0 (masukan 640 dan crop detektor yang sama). Keduanya lebih lambat pada YOLO11s dalam uji ini. Angka berasal dari pencocokan kelas/arah/waktu dengan GT awal, `identity_verified: false`; belum merupakan audit identitas ulang atau mAP deteksi. YOLO11n tetap bawaan karena model lebih besar belum unggul konsisten. Artefak percobaan tersimpan lokal di `outputs/model-improvement-validation/`; anotasi tidak diubah.
+
+Jika video lokal `vehicles-3-bytetrack-test.mp4` tersedia, pilih profil **Pemulihan crossing** untuk memakai preset antrean dan lakukan uji 10 detik. CLI setara untuk mencoba awal 8 detik:
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/vehicles-3-bytetrack-test.mp4 --config configs/experiments/vehicles-3-congestion.yaml --max-seconds 8
+```
+
+Untuk video lain, `--max-seconds 5 --congestion-roi 0.05 0.45 0.95 0.95` mengaktifkan indikator pada area ternormalisasi tersebut. Hilangkan `--max-seconds` untuk analisis penuh. Parameter lengkap berada di `CongestionConfig`/bagian `congestion` YAML; lihat [acuan indikator macet](CONTEXT.md#132-indikator-macet-awal).
+
+### Zona per lajur dan heatmap
+
+Setelah indikator macet aktif, buka **Zona macet per lajur/arah**, centang analisis beberapa zona, pilih 1–4 zona, dan beri nama sesuai jalan yang diamati. Geser titik poligon; tambah/hapus titik jika perlu mengikuti perspektif lajur. Poligon 3–12 titik tidak boleh bersilangan. Setiap zona memiliki riwayat gerak dan status sendiri, sehingga kendaraan bergerak pada lajur lain tidak dicampur ke indikator zona tersebut. Zona yang tumpang tindih boleh mengamati kendaraan sama; jangan menjumlahkannya sebagai kendaraan unik.
+
+Tab **Lalu lintas** menampilkan status/episode per zona dan CSV `traffic_zones.csv`/`traffic_zone_episodes.csv`. Area persegi panjang utama tetap ditampilkan terpisah. Profil **Pemulihan crossing** untuk klip `vehicles-3-bytetrack-test.mp4` kini menggunakan preset [dua zona contoh](configs/experiments/vehicles-3-coursework.yaml); bentuknya perlu disesuaikan untuk kamera lain.
+
+Centang **Buat heatmap keberadaan kendaraan**, lalu buka **Bukti materi → Heatmap** setelah analisis. Heatmap memakai anchor hasil tracking yang sama, dengan penambahan `1/FPS` detik per sel yang teramati setiap frame. `heatmap.npz` menyimpan grid mentah 128×128, `heatmap.json` menjelaskan satuan/skala, dan `heatmap.png` menampilkan warna relatif pada frame sumber. Gaussian smoothing hanya memperhalus tampilan. Warna hangat bukan bukti macet atau jumlah kendaraan unik. CLI: tambahkan `--heatmap`.
+
+### Menyiapkan label untuk fine-tuning
+
+Pada **Audit crossing**, buka **Beri kotak manual untuk calon dataset YOLO**, centang editor kotak, lalu pilih frame sumber. Pilih kelas dan tarik kotak; klik kotak untuk mengubah kelas atau memperbaiki sudutnya. Konfirmasi setelah seluruh kendaraan diperiksa. Frame tanpa kotak yang dikonfirmasi disimpan sebagai contoh negatif. Jika sumber run lama hilang, unggah ulang video asli; checksum wajib sama.
+
+Label tersimpan sebagai revisi baru di `outputs/dataset-labels/`, terpisah dari event counting dan catatan crossing. Ekspor ZIP berisi PNG sumber tanpa overlay, label YOLO `class cx cy width height` ternormalisasi, metadata, dan petunjuk. Kelas dataset: 0 `car`, 1 `motorcycle`, 2 `bus`, 3 `truck`. Ekspor memakai revisi terakhir tiap video/frame, maksimal 200 frame/150 MB melalui UI. Belum ada split otomatis: pisahkan train/validation/test berdasarkan **video sumber**, dan tinjau label bersama teman sebelum pelatihan. Fitur ini belum melatih bobot baru atau menghasilkan mAP.
+
+### Hasil eksperimen filter tambahan
+
+Uji 16 November 2026 memakai klip penuh, YOLO11n, ByteTrack `fuse_score: true`, dan geometri/config pemulihan yang sama. Angka berikut adalah pencocokan otomatis kelas/arah/waktu, `identity_verified: false`.
+
+| Klip | Prapemrosesan | TP | FP | FN |
+| --- | --- | ---: | ---: | ---: |
+| Hujan | CLAHE | 7 | 0 | 0 |
+| Hujan | Bilateral + CLAHE | 6 | 0 | 1 |
+| Hujan | Median | 7 | 0 | 0 |
+| Istanbul | CLAHE | 5 | 5 | 0 |
+| Istanbul | Bilateral + CLAHE | 3 | 6 | 2 |
+| Istanbul | Median | 3 | 6 | 2 |
+
+Filter tambahan belum menunjukkan peningkatan konsisten, sehingga tidak mengganti default. Artefak lokal berada di `outputs/coursework-feature-validation/`. Dua klip tersebut sudah berulang dipakai untuk eksperimen; evaluasi akhir perlu video baru yang belum dipakai memilih parameter. Uji worker nyata terpisah di `outputs/real-worker-validation/` memverifikasi antrean, pembatalan saat menunggu/berjalan, dua zona, heatmap, dan konsistensi satu crossing pada enam detik awal klip antrean. Angka fixture pada pengujian otomatis tidak dimasukkan sebagai metrik akurasi proyek.
 
 ## Mengevaluasi hitungan
 
@@ -130,6 +210,8 @@ ByteTrack dengan `fuse_score: true` tetap pilihan utama. DeepSORT adalah metode 
 ```
 
 Di Streamlit, pilih **DeepSORT (eksperimen)** pada pilihan tracker. Tombol analisis dinonaktifkan bila paket opsional belum tersedia. `deep-sort-realtime==1.3.2` memakai MobileNetV2 pretrained ImageNet yang dibundel dalam paket untuk fitur tampilan pada CPU; bobot dan checksum dicatat di metadata. Ini belum merupakan model ReID yang dilatih khusus kendaraan. Analisis hanya meneruskan track terkonfirmasi dengan deteksi aktual pada frame itu; posisi prediksi Kalman saat deteksi hilang tidak menghasilkan crossing. DeepSORT lebih lambat dan menambah hitungan ganda pada klip hujan dalam [uji aktual](docs/tracker-safety-evaluation.md), sehingga belum direkomendasikan menggantikan ByteTrack. Paket lama ini masih memakai `pkg_resources`, sehingga ekstra mengunci `setuptools<81`.
+
+Setelah memperbarui kode saat aplikasi lokal masih berjalan, mulai ulang proses Streamlit agar modul pelacak dimuat ulang. Hentikan proses di terminal dengan Ctrl+C, lalu jalankan kembali perintah Streamlit pada bagian antarmuka. Streamlit dapat memperbarui tampilan sambil mempertahankan modul Python lama di memori; akibatnya pilihan DeepSORT bisa terlihat tetapi pelacak lama masih menolaknya. UI memeriksa konfigurasi melalui pelacak yang sedang dimuat dan menampilkan petunjuk mulai ulang sebelum mengizinkan analisis jika terjadi ketidaksesuaian ini.
 
 ## Mencoba tanpa video
 

@@ -15,6 +15,10 @@
 !src
 !src/vehicle_counter
 !src/vehicle_counter/*.py
+!src/vehicle_counter/editor
+!src/vehicle_counter/editor/*.html
+!src/vehicle_counter/editor/shapes
+!src/vehicle_counter/editor/shapes/*.html
 !deploy
 !deploy/Dockerfile
 !deploy/Dockerfile.update

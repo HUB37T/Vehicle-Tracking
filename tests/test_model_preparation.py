@@ -6,7 +6,7 @@ import pytest
 from vehicle_counter.tracking import prepare_model
 
 
-def fake_responses(monkeypatch, *, checksum_matches=True):
+def fake_responses(monkeypatch, *, checksum_matches=True, variant="yolo11n"):
     requests = pytest.importorskip("requests")
     payload = b"test fixture, not real weights" * 50000
     checksum = hashlib.sha256(payload).hexdigest()
@@ -21,7 +21,7 @@ def fake_responses(monkeypatch, *, checksum_matches=True):
                 "sha": "revision-from-official-api",
                 "siblings": [
                     {
-                        "rfilename": "yolo11n.pt",
+                        "rfilename": f"{variant}.pt",
                         "lfs": {
                             "sha256": checksum if checksum_matches else "0" * 64,
                         },
@@ -70,3 +70,22 @@ def test_invalid_source_and_truncated_cached_file_are_rejected(tmp_path):
     (tmp_path / "yolo11n.pt").write_bytes(b"incomplete")
     with pytest.raises(ValueError, match="terlalu kecil"):
         prepare_model(tmp_path)
+
+
+def test_small_variant_and_cache_integrity(monkeypatch, tmp_path):
+    payload, calls = fake_responses(monkeypatch, variant="yolo11s")
+    path = prepare_model(tmp_path, variant="yolo11s")
+    assert path.name == "yolo11s.pt" and path.read_bytes() == payload
+    assert calls[1].endswith("/yolo11s.pt")
+    path.write_bytes(b"x" * len(payload))
+    with pytest.raises(ValueError, match="Checksum bobot lokal"):
+        prepare_model(tmp_path, variant="yolo11s")
+
+
+def test_missing_variant_never_leaves_download(monkeypatch, tmp_path):
+    fake_responses(monkeypatch)
+    with pytest.raises(ValueError, match="tidak tersedia"):
+        prepare_model(tmp_path, variant="yolo11s")
+    with pytest.raises(ValueError, match="Varian"):
+        prepare_model(tmp_path, variant="not-a-model")
+    assert not list(tmp_path.glob("*.download"))

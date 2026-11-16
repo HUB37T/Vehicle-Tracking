@@ -169,6 +169,8 @@ def compare_runs(gt: Path, clip_id: str, runs: list[Path], tolerance: float = 0.
         manifest = json.loads((directory / "run.json").read_text(encoding="utf-8"))
         if manifest["status"] != "completed":
             raise ValueError(f"Run belum selesai: {directory.name}.")
+        if manifest.get("analysis_scope", {}).get("kind") == "preview":
+            raise ValueError("Uji singkat tidak dapat dibandingkan dengan anotasi video penuh.")
         if (
             manifest["source"]["sha256"] != sidecar["source_sha256"]
             or manifest["config"]["counting_line"] != sidecar["counting_line"]

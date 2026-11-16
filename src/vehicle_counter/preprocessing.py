@@ -45,6 +45,15 @@ def preprocess_frame(frame_bgr: NDArray[np.uint8], config: PreprocessConfig) -> 
             return blurred
         amount = config.unsharp_amount
         return cv2.addWeighted(frame_bgr, 1 + amount, blurred, -amount, 0)
+    if config.mode == "median":
+        return cv2.medianBlur(frame_bgr, config.gaussian_kernel_size)
+    if config.mode == "bilateral_clahe":
+        frame_bgr = cv2.bilateralFilter(
+            frame_bgr,
+            config.bilateral_diameter,
+            config.bilateral_sigma_color,
+            config.bilateral_sigma_space,
+        )
     lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
     lab[:, :, 0] = apply_clahe_luminance(lab[:, :, 0], config)
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
