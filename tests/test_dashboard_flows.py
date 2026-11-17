@@ -363,7 +363,16 @@ def test_preview_is_not_scored_against_full_video_annotations(dashboard_project)
         compare_runs(gt, "fixture", [Path(result.output_dir)])
 
 
-def test_model_controls_and_comparison_keep_camera_settings(dashboard_project, monkeypatch):
+@pytest.mark.parametrize(
+    ("variant", "model_label", "comparison"),
+    [
+        ("yolo11s", "YOLO11s — pembanding", "YOLO11n vs YOLO11s"),
+        ("yolo26n", "YOLO26n — kandidat edge", "YOLO11n vs YOLO26n"),
+    ],
+)
+def test_model_controls_and_comparison_keep_camera_settings(
+    dashboard_project, monkeypatch, variant, model_label, comparison
+):
     from streamlit.testing.v1 import AppTest
 
     from vehicle_counter import experiments, pipeline
@@ -373,22 +382,28 @@ def test_model_controls_and_comparison_keep_camera_settings(dashboard_project, m
     monkeypatch.setattr(experiments, "process_video", fixture_process)
     app = AppTest.from_file(str(root / "app.py"), default_timeout=25).run()
     next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
-    next(w for w in app.selectbox if w.label == "Model deteksi").select(
-        "YOLO11s — pembanding"
-    ).run()
+    next(w for w in app.selectbox if w.label == "Model deteksi").select(model_label).run()
+    if variant == "yolo26n":
+        assert next(w for w in app.button if w.label == "Uji singkat").disabled
+        assert any("--variant yolo26n" in w.value for w in app.warning)
+        (root / "models" / "yolo26n.pt").write_bytes(b"fixture, no model inference")
+        app.run()
+        next(w for w in app.button if w.label == "Uji singkat").click().run()
+        finish_app_job(app, root)
+        run = app.session_state["result"][0]
+        info = json.loads(Path(run.artifact_paths["run_json"]).read_text())
+        assert Path(info["config"]["model_weights"]).name == "yolo26n.pt"
     next(w for w in app.selectbox if w.label == "Ukuran masukan YOLO").select(960).run()
     next(w for w in app.number_input if w.label == "Confidence minimum detektor").set_value(
         0.12
     ).run()
-    next(w for w in app.radio if w.label == "Yang dibandingkan").set_value(
-        "YOLO11n vs YOLO11s"
-    ).run()
+    next(w for w in app.radio if w.label == "Yang dibandingkan").set_value(comparison).run()
     next(w for w in app.button if w.label == "Bandingkan metode").click().run()
     finish_app_job(app, root)
     assert not app.exception
     batch = app.session_state["comparison"]
     assert len(batch["rows"]) == 2
-    assert {row["model"] for row in batch["rows"]} == {"yolo11n.pt", "yolo11s.pt"}
+    assert {row["model"] for row in batch["rows"]} == {"yolo11n.pt", f"{variant}.pt"}
     assert all(row["imgsz"] == 960 and row["detector_conf"] == 0.12 for row in batch["rows"])
     manifests = [
         json.loads(Path(r["artifact_paths"]["run_json"]).read_text()) for r in batch["results"]

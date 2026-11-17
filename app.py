@@ -52,6 +52,15 @@ from vehicle_counter.video import VideoReader
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DEMO = os.environ.get("VEHICLE_COUNTER_PUBLIC_DEMO") == "1"
 CLASSES = dict(zip(VEHICLE_CLASSES, ("Mobil", "Motor", "Bus", "Truk"), strict=True))
+MODELS = {
+    "YOLO11n — ringan": "yolo11n",
+    "YOLO11s — pembanding": "yolo11s",
+    "YOLO26n — kandidat edge": "yolo26n",
+}
+MODEL_COMPARISONS = {
+    "YOLO11n vs YOLO11s": ("yolo11n", "yolo11s"),
+    "YOLO11n vs YOLO26n": ("yolo11n", "yolo26n"),
+}
 MODES = {
     "none": "Tanpa prapemrosesan",
     "clahe": "CLAHE",
@@ -523,11 +532,8 @@ def _show_setup(queue, owner, has_active) -> None:
                             "Mulai ulang aplikasi setelah memperbarui kode; jika tetap gagal, "
                             "periksa configs/deepsort.yaml."
                         )
-            model_choice = st.selectbox(
-                "Model deteksi", ("Sesuai profil", "YOLO11n — ringan", "YOLO11s — pembanding")
-            )
-            if model_choice != "Sesuai profil":
-                variant = "yolo11s" if model_choice.startswith("YOLO11s") else "yolo11n"
+            model_choice = st.selectbox("Model deteksi", ("Sesuai profil", *MODELS))
+            if variant := MODELS.get(model_choice):
                 config = replace(config, model_weights=str(ROOT / "models" / f"{variant}.pt"))
             size = st.selectbox("Ukuran masukan YOLO", ("Sesuai profil", 640, 960, 1280))
             conf = st.number_input(
@@ -754,15 +760,18 @@ def _show_setup(queue, owner, has_active) -> None:
                 "Tanpa vs CLAHE",
                 "ByteTrack vs DeepSORT",
                 "Keduanya (4 run)",
-                "YOLO11n vs YOLO11s",
+                *MODEL_COMPARISONS,
                 "CLAHE vs prapemrosesan terpilih",
             ),
         )
         full_comparison = st.checkbox("Bandingkan seluruh video", value=False)
-        compare_models = compare_kind == "YOLO11n vs YOLO11s"
+        model_weights = tuple(
+            str(ROOT / "models" / f"{variant}.pt")
+            for variant in MODEL_COMPARISONS.get(compare_kind, ())
+        )
+        missing_weights = [Path(w).name for w in model_weights if not Path(w).is_file()]
         compare_filter = compare_kind == "CLAHE vs prapemrosesan terpilih"
         compare_requires_deep = compare_kind in ("ByteTrack vs DeepSORT", "Keduanya (4 run)")
-        model_weights = tuple(str(ROOT / "models" / f"{v}.pt") for v in ("yolo11n", "yolo11s"))
         comparison_disabled = (
             not ready
             or has_active
@@ -772,14 +781,10 @@ def _show_setup(queue, owner, has_active) -> None:
                 if compare_requires_deep
                 else (deepsort_selected and not deepsort_ready)
             )
-            or (
-                not all(Path(w).is_file() for w in model_weights)
-                if compare_models
-                else not model_ready
-            )
+            or (bool(missing_weights) if model_weights else not model_ready)
         )
-        if compare_models and not all(Path(w).is_file() for w in model_weights):
-            st.info("Siapkan kedua bobot YOLO11n dan YOLO11s untuk membandingkan model.")
+        if missing_weights:
+            st.info(f"Siapkan bobot untuk perbandingan: {', '.join(missing_weights)}.")
         if compare_filter and mode == "clahe":
             st.info("Pilih profil Kustom dan prapemrosesan pembanding yang berbeda dari CLAHE.")
         if st.button(
@@ -811,7 +816,7 @@ def _show_setup(queue, owner, has_active) -> None:
                         comparison={
                             "modes": modes,
                             "trackers": trackers,
-                            "weights": model_weights if compare_models else None,
+                            "weights": model_weights or None,
                         },
                     )
                 st.session_state.pending_job = job_id

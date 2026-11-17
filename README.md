@@ -60,13 +60,14 @@ Dari lingkungan fondasi yang sudah terpasang, gunakan CPU untuk baseline:
 
 Persiapan bobot membutuhkan internet. Default mengunduh dari repositori resmi `Ultralytics/YOLO11` di Hugging Face, mengunci revision dan memverifikasi SHA256 dari metadata resminya. Alternatif distribusi GitHub tersedia melalui `prepare-model --source github`. Bobot disimpan lokal di `models/yolo11n.pt`; analisis video memakai berkas lokal dan tidak memulai unduhan model diam-diam.
 
-YOLO11n tetap model bawaan. YOLO11s pretrained tersedia sebagai pembanding yang lebih besar dari [keluarga YOLO11 resmi](https://docs.ultralytics.com/models/yolo11/). Siapkan secara eksplisit:
+YOLO11n adalah model bawaan. Siapkan YOLO11s untuk membandingkan model yang lebih besar, atau YOLO26n untuk menguji kandidat perangkat edge. [YOLO11 resmi](https://docs.ultralytics.com/models/yolo11/) · [YOLO26 resmi](https://docs.ultralytics.com/models/yolo26/)
 
 ```powershell
 .\.venv\Scripts\python.exe -m vehicle_counter.cli prepare-model --variant yolo11s
+.\.venv\Scripts\python.exe -m vehicle_counter.cli prepare-model --variant yolo26n
 ```
 
-Pilih melalui **Pengaturan model YOLO**. Ukuran masukan dan confidence dapat diatur sebelum run. CLI menyediakan `--weights models/yolo11s.pt --imgsz 960 --conf 0.1`. Pengunduhan memverifikasi checksum sebelum mempromosikan berkas dan memeriksa checksum cache bila metadata sumber tersedia. Ini penggunaan bobot pretrained; belum ada fine-tuning model tim.
+Pilih di **Siapkan analisis → Model dan pelacakan → Model deteksi**. Ukuran masukan dan confidence dapat diatur sebelum run. Untuk YOLO26n lewat CLI, tambahkan `--weights models/yolo26n.pt` pada perintah `analyze`. YOLO26n memakai bobot pretrained PyTorch dalam alur video yang sama dengan YOLO11n. Ukur performa lagi pada perangkat dan runtime yang akan dipakai di lapangan.
 
 Setelah ada video jalan:
 
@@ -147,7 +148,7 @@ Antrean aplikasi menjalankan satu pekerjaan inferensi pada satu waktu, termasuk 
 Pekerjaan menyimpan salinan video serta konfigurasi saat dikirim; perubahan widget tidak mengubah pekerjaan lama. Worker dapat meneruskan proses saat tab ditutup, tetapi kontrol batal milik sesi pengirim. Jika sesi berganti, hasil selesai dapat dicari lewat riwayat. `outputs/jobs/` berisi SQLite, folder sumber, log, progres, dan hasil; jaga folder ini jika ingin mempertahankan riwayat/sumber pelabelan. Data tidak otomatis dihapus saat tab ditutup, sehingga penyimpanan perlu dikelola tim. CLI `analyze` langsung tetap sinkron dan berada di luar antrean UI.
 
 - **Perbandingan metode** menjalankan none vs CLAHE, ByteTrack vs DeepSORT, atau empat kombinasi dengan video, garis, area, dan durasi yang sama. DeepSORT membutuhkan dependensi opsional di bawah. Tabel membandingkan jumlah serta waktu pemrosesan; penilaian akurasi membutuhkan anotasi manual. Gunakan run penuh untuk evaluasi GT seluruh video.
-- **YOLO11n vs YOLO11s** pada perbandingan metode memakai konfigurasi sama dan menampilkan nama model, ukuran masukan, confidence, serta checksum bobot. Kedua bobot harus tersedia lokal. Jangan menilai model hanya dari jumlah deteksi atau crossing yang lebih banyak.
+- **YOLO11n vs YOLO11s** dan **YOLO11n vs YOLO26n** di **Perbandingan metode** memakai konfigurasi sama dan menampilkan nama model, ukuran masukan, confidence, serta checksum bobot. Siapkan kedua bobot untuk pasangan yang dipilih. Gunakan anotasi manual untuk menilai ketepatan crossing.
 - **Riwayat analisis** dapat mencari dan membuka kembali hingga 100 run terbaru di `outputs/`, termasuk run singkat dan hasil gagal. Hasil yang dibuka memakai konfigurasi run tersimpan; pengaturan percobaan baru tidak mengubahnya. Folder run yang dipindah tetap bisa dibuka jika berkas hasilnya lengkap.
 - **Hasil → Rekap** menampilkan crossing per kelas dan arah beserta grafik waktu per interval 5 detik dari event otomatis. Buka **Bukti materi → Diagnostik deteksi dan tracking** untuk memeriksa deteksi kosong, track belum muncul, posisi terhadap garis, dan jeda ID.
 - **Audit crossing** menyediakan catatan pemeriksaan manual termasuk kendaraan terlewat. Catatan tersimpan sebagai riwayat terpisah dan dapat diunduh; hitungan otomatis tetap bersumber dari `events.csv`.

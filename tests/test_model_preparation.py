@@ -72,14 +72,18 @@ def test_invalid_source_and_truncated_cached_file_are_rejected(tmp_path):
         prepare_model(tmp_path)
 
 
-def test_small_variant_and_cache_integrity(monkeypatch, tmp_path):
-    payload, calls = fake_responses(monkeypatch, variant="yolo11s")
-    path = prepare_model(tmp_path, variant="yolo11s")
-    assert path.name == "yolo11s.pt" and path.read_bytes() == payload
-    assert calls[1].endswith("/yolo11s.pt")
+@pytest.mark.parametrize(("variant", "family"), [("yolo11s", "YOLO11"), ("yolo26n", "YOLO26")])
+def test_optional_variant_uses_its_official_repository(monkeypatch, tmp_path, variant, family):
+    payload, calls = fake_responses(monkeypatch, variant=variant)
+    path = prepare_model(tmp_path, variant=variant)
+    assert path.name == f"{variant}.pt" and path.read_bytes() == payload
+    assert calls == [
+        f"https://huggingface.co/api/models/Ultralytics/{family}?blobs=true",
+        f"https://huggingface.co/Ultralytics/{family}/resolve/revision-from-official-api/{variant}.pt",
+    ]
     path.write_bytes(b"x" * len(payload))
     with pytest.raises(ValueError, match="Checksum bobot lokal"):
-        prepare_model(tmp_path, variant="yolo11s")
+        prepare_model(tmp_path, variant=variant)
 
 
 def test_missing_variant_never_leaves_download(monkeypatch, tmp_path):

@@ -7,13 +7,14 @@ from pathlib import Path
 
 from vehicle_counter.config import load_config
 from vehicle_counter.contracts import PREPROCESS_MODES, RunConfig
+from vehicle_counter.tracking import MODEL_SOURCES
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Penghitung kendaraan dari video MP4 lokal.")
     commands = parser.add_subparsers(dest="command", required=True)
-    prepare = commands.add_parser("prepare-model", help="Unduh bobot pretrained YOLO11 resmi.")
-    prepare.add_argument("--variant", choices=["yolo11n", "yolo11s"], default="yolo11n")
+    prepare = commands.add_parser("prepare-model", help="Unduh bobot pretrained YOLO resmi.")
+    prepare.add_argument("--variant", choices=tuple(MODEL_SOURCES), default="yolo11n")
     prepare.add_argument("--directory", type=Path, default=Path("models"))
     prepare.add_argument("--source", choices=["huggingface", "github"], default="huggingface")
     inspect = commands.add_parser("inspect", help="Periksa metadata dan frame awal video.")

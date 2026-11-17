@@ -16,6 +16,12 @@ from numpy.typing import NDArray
 from vehicle_counter.contracts import BBox, RunConfig, TrackObservation, VideoMetadata
 from vehicle_counter.exporting import file_sha256, write_json
 
+MODEL_SOURCES = {
+    "yolo11n": ("Ultralytics/YOLO11", "v8.3.0"),
+    "yolo11s": ("Ultralytics/YOLO11", "v8.3.0"),
+    "yolo26n": ("Ultralytics/YOLO26", "v8.4.0"),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class VehicleDetection:
@@ -49,8 +55,9 @@ def prepare_model(
     directory: str | Path = "models", *, source: str = "huggingface", variant: str = "yolo11n"
 ) -> Path:
     """Explicitly prepare official detection weights, never during video analysis."""
-    if variant not in ("yolo11n", "yolo11s"):
-        raise ValueError("Varian harus yolo11n atau yolo11s.")
+    if variant not in MODEL_SOURCES:
+        raise ValueError(f"Varian harus salah satu dari {', '.join(MODEL_SOURCES)}.")
+    repository, release = MODEL_SOURCES[variant]
     if source not in ("huggingface", "github"):
         raise ValueError("Sumber bobot harus huggingface atau github.")
     directory = Path(directory).expanduser().resolve()
@@ -71,16 +78,16 @@ def prepare_model(
     if source == "github":
         from ultralytics.utils.downloads import attempt_download_asset
 
-        downloaded = Path(attempt_download_asset(str(target), release="v8.3.0"))
+        downloaded = Path(attempt_download_asset(str(target), release=release))
         provenance = {
-            "source_url": f"https://github.com/ultralytics/assets/releases/download/v8.3.0/{filename}",
-            "release": "v8.3.0",
+            "source_url": f"https://github.com/ultralytics/assets/releases/download/{release}/{filename}",
+            "release": release,
         }
     elif source == "huggingface":
         import requests
 
         info_response = requests.get(
-            "https://huggingface.co/api/models/Ultralytics/YOLO11?blobs=true", timeout=30
+            f"https://huggingface.co/api/models/{repository}?blobs=true", timeout=30
         )
         info_response.raise_for_status()
         info = info_response.json()
@@ -89,7 +96,7 @@ def prepare_model(
         if entry is None:
             raise ValueError(f"Bobot {filename} tidak tersedia di repositori resmi.")
         expected_sha = entry["lfs"]["sha256"]
-        url = f"https://huggingface.co/Ultralytics/YOLO11/resolve/{revision}/{filename}"
+        url = f"https://huggingface.co/{repository}/resolve/{revision}/{filename}"
         temporary = target.with_suffix(f".pt.{uuid4().hex}.download")
         try:
             with requests.get(url, stream=True, timeout=(15, 60)) as response:
