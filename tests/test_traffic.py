@@ -89,6 +89,24 @@ def test_recovery_requires_duration_of_clear_motion():
     assert traffic.current.status != "congested"
 
 
+def test_dropout_grace_retries_only_a_confirmed_queue_sample():
+    traffic = monitor(dropout_grace_seconds=0.2)
+    for frame in range(51):
+        traffic.update(
+            [] if frame == 45 else tracks(frame), frame_index=frame, timestamp=frame / 10
+        )
+    assert [(s.timestamp_seconds, s.status) for s in traffic.samples[-2:]] == [
+        (4, "congested"),
+        (4.6, "congested"),
+    ]
+    for frame in range(51, 60):
+        traffic.update([], frame_index=frame, timestamp=frame / 10)
+    assert traffic.current.status == "empty"
+    first_empty = next(sample for sample in traffic.samples if sample.status == "empty")
+    assert first_empty.timestamp_seconds == pytest.approx(5.3)
+    assert traffic.current.vehicle_count == 0
+
+
 def test_congestion_episodes_split_on_recovery_and_include_video_tail():
     traffic = monitor()
     for frame in range(110):

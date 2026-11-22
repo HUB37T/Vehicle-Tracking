@@ -139,6 +139,57 @@ def test_complete_pipeline_artifacts_match_events_and_source(synthetic_video, tm
         assert not np.all(next(iter(output))[1] == 255)
 
 
+def test_crop_review_threshold_and_audit_follow_the_final_event(
+    synthetic_video, tmp_path, monkeypatch
+):
+    from vehicle_counter import pipeline
+    from vehicle_counter.truck_review import TruckCropReviewer, light_vehicle_decision
+
+    class TruckTracker(SyntheticTracker):
+        def track_frame(self, frame_bgr, *, frame_index, timestamp_seconds):
+            return [
+                replace(o, class_name="truck")
+                for o in super().track_frame(
+                    frame_bgr, frame_index=frame_index, timestamp_seconds=timestamp_seconds
+                )
+            ]
+
+    class FixtureReviewer(TruckCropReviewer):
+        def __init__(self, weights, *, light_threshold, minivan_only):
+            assert weights == "fixture-weights"
+            self._threshold = light_threshold
+            self._minivan_only = minivan_only
+            self.rows = []
+            self.corrected_track_ids = set()
+            self.metadata = {"light_threshold": light_threshold, "kind": "score-fixture"}
+
+        def __call__(self, frame, observation):
+            correct = light_vehicle_decision("minivan", 0.3157, self._threshold)
+            self._record(observation, "minivan", 0.3157, correct, "score_fixture")
+            if correct:
+                self.corrected_track_ids.add(observation.track_id)
+            return correct
+
+    monkeypatch.setattr(pipeline, "TruckCropReviewer", FixtureReviewer)
+    result = process_video(
+        synthetic_video,
+        RunConfig(truck_review_weights="fixture-weights", truck_review_light_threshold=0.30),
+        tmp_path / "review",
+        tracker_factory=TruckTracker,
+    )
+    assert result.status == "completed"
+    assert result.summary.by_class_direction["car"]["A_TO_B"] == result.summary.total == 1
+    with Path(result.artifact_paths["truck_review_csv"]).open(encoding="utf-8") as handle:
+        review = list(csv.DictReader(handle))
+    with Path(result.artifact_paths["events_csv"]).open(encoding="utf-8") as handle:
+        events = list(csv.DictReader(handle))
+    assert review[0]["track_id"] == events[0]["track_id"]
+    assert review[0]["final_class"] == events[0]["class_name"] == "car"
+    assert review[0]["detector_class"] == "truck"
+    info = json.loads(Path(result.artifact_paths["run_json"]).read_text())
+    assert info["truck_review"]["corrected_crossings"] == 1
+
+
 def test_preview_stops_at_requested_duration_and_records_scope(synthetic_video, tmp_path):
     result = process_video(
         synthetic_video,

@@ -14,6 +14,11 @@ import yaml
 from numpy.typing import NDArray
 
 from vehicle_counter.contracts import BBox, RunConfig, TrackObservation, VideoMetadata
+from vehicle_counter.detection_filter import (
+    CONFLICT_CLASSES,
+    DUPLICATE_BOX_IOU,
+    distinct_vehicle_indices,
+)
 from vehicle_counter.exporting import file_sha256, write_json
 
 MODEL_SOURCES = {
@@ -295,6 +300,12 @@ class YoloTracker:
             "tracker_settings": settings,
             "track_buffer_units": "frames",
             "anchor_source": "matched_detection_bbox",
+            "duplicate_box_filter": {
+                "active": config.detector_deduplicate_classes,
+                "iou_threshold": DUPLICATE_BOX_IOU,
+                "classes": sorted(CONFLICT_CLASSES),
+                "removed_boxes": 0,
+            },
         }
         if self.detection_roi_pixels is not None:
             self.metadata["detection_roi_pixels"] = self.detection_roi_pixels
@@ -331,6 +342,14 @@ class YoloTracker:
             save=False,
         )
         detections = results[0].boxes.cpu().numpy()
+        if self._config.detector_deduplicate_classes:
+            kept = distinct_vehicle_indices(
+                detections.xyxy,
+                detections.conf,
+                [self._names[int(class_id)] for class_id in detections.cls],
+            )
+            self.metadata["duplicate_box_filter"]["removed_boxes"] += len(detections) - len(kept)
+            detections = detections[kept]
         if self.detection_roi_pixels is not None:
             from ultralytics.engine.results import Boxes
 

@@ -62,28 +62,59 @@ def render_evidence(
         cv2.putText(panel, label, position, cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 0, 0), 3)
         cv2.putText(panel, label, position, cv2.FONT_HERSHEY_SIMPLEX, 0.44, color, 1, cv2.LINE_AA)
 
-    luminance_source = source
-    if config.mode == "bilateral_clahe":
-        luminance_source = cv2.bilateralFilter(
-            source,
-            config.bilateral_diameter,
-            config.bilateral_sigma_color,
-            config.bilateral_sigma_space,
-        )
-    luminance = cv2.cvtColor(luminance_source, cv2.COLOR_BGR2LAB)[:, :, 0]
     clahe_active = config.mode in ("clahe", "bilateral_clahe")
-    clahe_title = "03  CLAHE | L sesudah" if clahe_active else "03  CLAHE | tidak aktif"
-    clahe_panel = (
-        thumbnail(apply_clahe_luminance(luminance, config))
-        if clahe_active
-        else np.full((height, width, 3), 18, dtype=np.uint8)
-    )
-    clahe_note = (
-        f"clip limit {config.clahe_clip_limit:g}  |  grid "
-        f"{config.clahe_tile_grid_size[0]} x {config.clahe_tile_grid_size[1]}"
-        if clahe_active
-        else f"Prapemrosesan run: {config.mode}"
-    )
+    panels = [("Frame sumber", "Video didekode sebagai BGR 8-bit", thumbnail(source))]
+    kernel = config.gaussian_kernel_size
+    filter_details = {
+        "gamma": ("Gamma correction", f"Gamma {config.gamma:g} | transformasi intensitas"),
+        "gaussian": ("Gaussian smoothing", f"Kernel {kernel} x {kernel} | penghalusan"),
+        "unsharp": (
+            "Unsharp masking",
+            f"Kernel {kernel} x {kernel} | amount {config.unsharp_amount:g}",
+        ),
+        "median": ("Filter median", f"Kernel {kernel} x {kernel} | pengurangan noise"),
+    }
+    if clahe_active:
+        luminance_source = source
+        luminance_note = "Kanal L: kecerahan, dipisahkan dari warna"
+        clahe_title = "CLAHE | L sesudah"
+        if config.mode == "bilateral_clahe":
+            luminance_source = cv2.bilateralFilter(
+                source,
+                config.bilateral_diameter,
+                config.bilateral_sigma_color,
+                config.bilateral_sigma_space,
+            )
+            luminance_note = f"Bilateral lebih dahulu | diameter {config.bilateral_diameter}"
+            clahe_title = "Bilateral + CLAHE | L sesudah"
+        luminance = cv2.cvtColor(luminance_source, cv2.COLOR_BGR2LAB)[:, :, 0]
+        grid_x, grid_y = config.clahe_tile_grid_size
+        panels.extend(
+            (
+                ("Ruang warna | BGR ke Lab", luminance_note, thumbnail(luminance)),
+                (
+                    clahe_title,
+                    f"clip limit {config.clahe_clip_limit:g} | grid {grid_x} x {grid_y}",
+                    thumbnail(apply_clahe_luminance(luminance, config)),
+                ),
+            )
+        )
+    elif config.mode != "none":
+        title, note = filter_details[config.mode]
+        panels.append((title, note, thumbnail(model_input)))
+
+    if detection_roi_pixels is not None:
+        x1, y1, x2, y2 = detection_roi_pixels
+        panels.append(
+            (
+                "Input detektor",
+                f"Potongan ROI {x2 - x1} x {y2 - y1} | mode {config.mode}",
+                thumbnail(model_input[y1:y2, x1:x2]),
+            )
+        )
+    elif clahe_active:
+        panels.append(("Input detektor", "Hasil dikonversi kembali ke BGR", thumbnail(model_input)))
+
     detection_panel = thumbnail(model_input)
     tracking_panel = thumbnail(source)
     for detection in detections or ():
@@ -102,44 +133,31 @@ def render_evidence(
         box(tracking_panel, track.bbox_xyxy, f"{track.class_name} #{track.track_id}", color)
         cv2.circle(tracking_panel, point(track.anchor), 3, (30, 65, 255), -1)
 
-    detector_frame = model_input
-    detector_note = f"Frame yang dipakai model | mode {config.mode}"
-    if detection_roi_pixels is not None:
-        x1, y1, x2, y2 = detection_roi_pixels
-        detector_frame = model_input[y1:y2, x1:x2]
-        detector_note = f"Potongan ROI {x2 - x1} x {y2 - y1} | mode {config.mode}"
-
-    panels = (
-        ("01  Frame sumber", "Video didekode sebagai BGR 8-bit", thumbnail(source)),
+    panels.extend(
         (
-            "02  Ruang warna | BGR ke Lab",
-            "Bilateral lebih dahulu | kanal L"
-            if config.mode == "bilateral_clahe"
-            else "Kanal L: kecerahan, dipisahkan dari warna",
-            thumbnail(luminance),
-        ),
-        (clahe_title, clahe_note, clahe_panel),
-        (
-            "04  Input detektor",
-            detector_note,
-            thumbnail(detector_frame),
-        ),
-        (
-            "05  Deteksi YOLO" if detections is not None else "05  Detektor uji",
-            f"{len(detections)} deteksi | kelas dan confidence"
-            if detections is not None
-            else "Keluaran deteksi tidak tersedia",
-            detection_panel,
-        ),
-        (
-            f"06  Tracking {tracker_name}" if detections is not None else "06  Tracker uji",
-            f"{len(observations)} track | ID, jejak, dan garis hitung",
-            tracking_panel,
-        ),
+            (
+                "Deteksi YOLO" if detections is not None else "Detektor uji",
+                f"{len(detections)} deteksi | kelas dan confidence"
+                if detections is not None
+                else "Keluaran deteksi tidak tersedia",
+                detection_panel,
+            ),
+            (
+                f"Tracking {tracker_name}" if detections is not None else "Tracker uji",
+                f"{len(observations)} track | ID, jejak, dan garis hitung",
+                tracking_panel,
+            ),
+        )
     )
+    columns = 2 if len(panels) == 4 else 3
+    rows = (len(panels) + columns - 1) // columns
     margin, gap, header, title_height = 18, 12, 66, 58
     canvas = np.full(
-        (header + 2 * (title_height + height + gap) + margin, 2 * margin + 3 * width + 2 * gap, 3),
+        (
+            header + rows * (title_height + height + gap) + margin,
+            2 * margin + columns * width + (columns - 1) * gap,
+            3,
+        ),
         (27, 23, 20),
         dtype=np.uint8,
     )
@@ -156,11 +174,11 @@ def render_evidence(
         (205, 192, 173),
     )
     for index, (title, subtitle, panel) in enumerate(panels):
-        row, col = divmod(index, 3)
+        row, col = divmod(index, columns)
         x = margin + col * (width + gap)
         y = header + row * (title_height + height + gap)
         canvas[y : y + title_height, x : x + width] = (47, 39, 33)
-        text(title, x + 12, y + 23, 0.62, (245, 240, 230))
+        text(f"{index + 1:02d}  {title}", x + 12, y + 23, 0.62, (245, 240, 230))
         text(subtitle, x + 12, y + 44, 0.47, (220, 200, 180))
         canvas[y + title_height : y + title_height + height, x : x + width] = panel
     return canvas

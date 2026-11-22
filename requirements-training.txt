@@ -1,0 +1,2 @@
+# Install CUDA torch/torchvision in a separate environment first; see README.
+-e .[tracking]

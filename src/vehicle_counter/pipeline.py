@@ -21,7 +21,12 @@ from vehicle_counter.execution import AnalysisCancelled, check_cancel
 from vehicle_counter.exporting import export_counts, export_lane_counts, file_sha256, write_json
 from vehicle_counter.heatmap import PresenceHeatmap
 from vehicle_counter.preprocessing import preprocess_frame
-from vehicle_counter.run_analysis import CrossingDiagnostics, export_analysis, export_zone_analysis
+from vehicle_counter.run_analysis import (
+    CrossingDiagnostics,
+    export_analysis,
+    export_zone_analysis,
+    write_rows,
+)
 from vehicle_counter.run_evidence import render_evidence, write_evidence
 from vehicle_counter.tracking import FrameTracker, YoloTracker
 from vehicle_counter.traffic import TrafficMonitor
@@ -193,7 +198,11 @@ def process_video(
             model_start = perf_counter()
             tracker = (tracker_factory or YoloTracker)(config, metadata)
             review_truck = (
-                TruckCropReviewer(config.truck_review_weights)
+                TruckCropReviewer(
+                    config.truck_review_weights,
+                    light_threshold=config.truck_review_light_threshold,
+                    minivan_only=config.truck_review_minivan_only,
+                )
                 if config.truck_review_weights
                 else None
             )
@@ -226,7 +235,14 @@ def process_video(
                     ):
                         raise ValueError("Observasi tracker tidak sesuai frame/timestamp pipeline.")
                     events = counter.update(
-                        observations, frame_bgr=frame, review_truck=review_truck
+                        observations,
+                        frame_bgr=frame,
+                        review_truck=review_truck,
+                        review_passenger_conflict=(
+                            review_truck.review_passenger_conflict
+                            if review_truck is not None and config.guard_dense_crossings
+                            else None
+                        ),
                     )
                     detections = getattr(tracker, "last_detections", None)
                     diagnostics.update(observations, detections)
@@ -249,6 +265,9 @@ def process_video(
                         observations,
                         counter.summary(),
                         timestamp_seconds=timestamp,
+                        reviewed_track_ids=(
+                            review_truck.corrected_track_ids if review_truck is not None else ()
+                        ),
                     )
                     if traffic is not None:
                         annotated = traffic.draw_overlay(annotated)
@@ -359,6 +378,38 @@ def process_video(
             audit_path = output_dir / "crossing_audit.csv"
             write_crossing_audit(audit_path, audit_rows)
             artifacts["crossing_audit"] = str(audit_path)
+            if config.guard_dense_crossings:
+                path = output_dir / "dense_crossing_adjustments.csv"
+                adjustments = counter.dense_crossing_adjustments
+                write_rows(
+                    path,
+                    adjustments,
+                    [
+                        "frame_index",
+                        "timestamp_seconds",
+                        "track_id",
+                        "direction",
+                        "voted_class",
+                        "class_name",
+                        "decision",
+                        "kept_track_id",
+                    ],
+                )
+                artifacts["dense_crossing_adjustments"] = str(path)
+                manifest["dense_crossings"] = {
+                    "suppressed_duplicates": sum(
+                        row["decision"] == "duplicate_suppressed" for row in adjustments
+                    ),
+                    "class_adjustments": sum(
+                        row["decision"] == "class_corrected" for row in adjustments
+                    ),
+                }
+            if review_truck is not None:
+                artifacts.update(review_truck.export(output_dir))
+                manifest["truck_review"]["reviewed_crossings"] = len(review_truck.rows)
+                manifest["truck_review"]["corrected_crossings"] = len(
+                    review_truck.corrected_track_ids
+                )
             manifest["crossing_audit"] = {
                 "events": len(audit_rows),
                 "flagged_events": sum(bool(row["review_reason"]) for row in audit_rows),

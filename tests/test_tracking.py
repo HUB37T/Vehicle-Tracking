@@ -77,8 +77,9 @@ def test_tracker_config_requires_bytetrack_and_valid_thresholds(tmp_path):
 
 @pytest.mark.parametrize("use_roi", [False, True])
 @pytest.mark.parametrize("tracker_config", ["bytetrack.yaml", "configs/deepsort.yaml"])
+@pytest.mark.parametrize("deduplicate", [False, True])
 def test_real_association_with_fake_detector_and_fresh_run(
-    monkeypatch, tmp_path, use_roi, tracker_config
+    monkeypatch, tmp_path, use_roi, tracker_config, deduplicate
 ):
     if "deepsort" in tracker_config:
         pytest.importorskip("deep_sort_realtime")
@@ -102,7 +103,11 @@ def test_real_association_with_fake_detector_and_fresh_run(
     weights.write_bytes(b"test fixture, not model weights")
     roi = (0.08, 0.1, 0.95, 0.9) if use_roi else None
     config = replace(
-        RunConfig(), model_weights=str(weights), detection_roi=roi, tracker_config=tracker_config
+        RunConfig(),
+        model_weights=str(weights),
+        detection_roi=roi,
+        tracker_config=tracker_config,
+        detector_deduplicate_classes=deduplicate,
     )
     metadata = VideoMetadata("synthetic.mp4", 100, 100, 10)
     first = YoloByteTracker(config, metadata)
@@ -124,6 +129,7 @@ def test_real_association_with_fake_detector_and_fresh_run(
     assert len(set(ids)) == 1
     assert calls[0]["classes"] == [4, 7, 9, 12]
     assert calls[0]["save"] is False
+    assert first.metadata["duplicate_box_filter"]["active"] is deduplicate
     assert calls[0]["source"].shape[:2] == ((80, 87) if use_roi else (100, 100))
     with pytest.raises(ValueError, match="berurutan"):
         first.track_frame(frame, frame_index=0, timestamp_seconds=0)
@@ -136,6 +142,45 @@ def test_real_association_with_fake_detector_and_fresh_run(
     assert first.metadata["tracker_settings"]["tracker_type"] == (
         "deepsort" if "deepsort" in tracker_config else "bytetrack"
     )
+
+
+@pytest.mark.parametrize("enabled,expected", [(False, 3), (True, 2)])
+def test_conflicting_boxes_are_filtered_before_real_association(
+    monkeypatch, tmp_path, enabled, expected
+):
+    ultralytics = pytest.importorskip("ultralytics")
+    from ultralytics.engine.results import Boxes
+
+    class ConflictingDetector:
+        task = "detect"
+        names = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
+
+        def predict(self, **kwargs):
+            data = np.array(
+                [
+                    [20, 20, 50, 70, 0.8, 7],
+                    [20, 20, 50, 70, 0.4, 2],
+                    [60, 20, 80, 70, 0.5, 3],
+                ],
+                dtype=np.float32,
+            )
+            return [SimpleNamespace(boxes=Boxes(data, (100, 100)))]
+
+    monkeypatch.setattr(ultralytics, "YOLO", lambda _: ConflictingDetector())
+    weights = tmp_path / "fake.pt"
+    weights.write_bytes(b"fixture")
+    tracker = YoloByteTracker(
+        RunConfig(model_weights=str(weights), detector_deduplicate_classes=enabled),
+        VideoMetadata("fixture.mp4", 100, 100, 10),
+    )
+    observations = tracker.track_frame(
+        np.zeros((100, 100, 3), dtype=np.uint8), frame_index=0, timestamp_seconds=0
+    )
+    assert len(observations) == len(tracker.last_detections) == expected
+    assert "motorcycle" in [o.class_name for o in observations]
+    if enabled:
+        assert [o.class_name for o in observations] == ["truck", "motorcycle"]
+        assert tracker.metadata["duplicate_box_filter"]["removed_boxes"] == 1
 
 
 def test_empty_frames_advance_actual_bytetrack(monkeypatch, tmp_path):

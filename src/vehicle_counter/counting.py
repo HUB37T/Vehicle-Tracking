@@ -17,10 +17,16 @@ from vehicle_counter.contracts import (
     _nonempty,
 )
 from vehicle_counter.crossing_duplicates import CrossingDuplicates
+from vehicle_counter.dense_crossings import DenseCrossingGuard
 from vehicle_counter.geometry import PixelCountingLine
 from vehicle_counter.polygons import polygon_contains
 
 TruckReview = Callable[[NDArray[np.uint8], TrackObservation], bool]
+
+
+def _box_area(observation: TrackObservation) -> float:
+    x1, y1, x2, y2 = observation.bbox_xyxy
+    return (x2 - x1) * (y2 - y1)
 
 
 @dataclass(slots=True)
@@ -61,6 +67,8 @@ class VehicleCounter:
         self.line = PixelCountingLine.from_config(config.counting_line, width=width, height=height)
         self._frame_span = (width - 1, height - 1)
         self._duplicates = CrossingDuplicates(self.line) if config.deduplicate_crossings else None
+        self._dense_guard = DenseCrossingGuard() if config.guard_dense_crossings else None
+        self.dense_crossing_adjustments: list[dict] = []
         self._tracks: dict[int, _TrackState] = {}
         self._counted: set[int] = set()
         self._crossings: list[tuple[CountEvent, Point]] = []
@@ -103,6 +111,7 @@ class VehicleCounter:
         *,
         frame_bgr: NDArray[np.uint8] | None = None,
         review_truck: TruckReview | None = None,
+        review_passenger_conflict: TruckReview | None = None,
     ) -> list[CountEvent]:
         observations = list(observations_for_frame)
         if not observations:
@@ -111,10 +120,12 @@ class VehicleCounter:
         first = observations[0]
         self._last_frame = first.frame_index
         self._last_timestamp = first.timestamp_seconds
+        if self._dense_guard is not None:
+            self._dense_guard.observe(observations, first.timestamp_seconds)
         if self._duplicates is not None:
             for observation in observations:
                 self._duplicates.observe_counted(observation)
-        new_events = []
+        candidates = []
         for observation in observations:
             if observation.class_name not in self.config.vehicle_classes:
                 continue
@@ -124,25 +135,67 @@ class VehicleCounter:
             if crossing is not None:
                 event, point = crossing
                 self._counted.add(event.track_id)
-                if (
-                    self._duplicates is not None
-                    and frame_bgr is not None
-                    and self._duplicates.suppress(event, observation, frame_bgr)
-                ):
+                candidates.append((event, point, observation))
+        if self._dense_guard is not None:
+            # For simultaneous nested boxes, process the more complete box first.
+            candidates.sort(key=lambda item: -_box_area(item[2]))
+        new_events = []
+        for event, point, observation in candidates:
+            voted_class = event.class_name
+            if self._dense_guard is not None:
+                event = replace(
+                    event, class_name=self._dense_guard.recent_class(event, observation)
+                )
+                duplicate_id = self._dense_guard.duplicate_of(event)
+                if duplicate_id is not None:
+                    self._record_dense_adjustment(event, voted_class, duplicate_id)
                     continue
-                if (
-                    event.class_name == "truck"
-                    and frame_bgr is not None
-                    and review_truck is not None
-                    and review_truck(frame_bgr, observation)
-                ):
-                    event = replace(event, class_name="car")
-                x, y = point
-                width_span, height_span = self._frame_span
-                self._crossings.append((event, (x / width_span, y / height_span)))
-                self._counts[event.class_name][event.direction] += 1
-                new_events.append(event)
+            pre_review_event = event
+            if (
+                self._duplicates is not None
+                and frame_bgr is not None
+                and self._duplicates.suppress(event, observation, frame_bgr)
+            ):
+                continue
+            reviewer = review_truck
+            if voted_class == "car" and review_passenger_conflict is not None:
+                reviewer = review_passenger_conflict
+            if (
+                event.class_name == "truck"
+                and frame_bgr is not None
+                and reviewer is not None
+                and reviewer(frame_bgr, observation)
+            ):
+                event = replace(event, class_name="car")
+            if self._dense_guard is not None:
+                if voted_class != pre_review_event.class_name and voted_class != event.class_name:
+                    self._record_dense_adjustment(event, voted_class)
+                # Keep the pre-review class for comparison with the next candidate.
+                self._dense_guard.accept(pre_review_event)
+            x, y = point
+            width_span, height_span = self._frame_span
+            self._crossings.append((event, (x / width_span, y / height_span)))
+            self._counts[event.class_name][event.direction] += 1
+            new_events.append(event)
         return new_events
+
+    def _record_dense_adjustment(
+        self, event: CountEvent, voted_class: str, kept_track_id: int | None = None
+    ) -> None:
+        self.dense_crossing_adjustments.append(
+            {
+                "frame_index": event.frame_index,
+                "timestamp_seconds": event.timestamp_seconds,
+                "track_id": event.track_id,
+                "direction": event.direction,
+                "voted_class": voted_class,
+                "class_name": event.class_name,
+                "decision": "duplicate_suppressed"
+                if kept_track_id is not None
+                else "class_corrected",
+                "kept_track_id": kept_track_id,
+            }
+        )
 
     def _validate_batch(self, observations: list[TrackObservation]) -> None:
         if any(not isinstance(item, TrackObservation) for item in observations):

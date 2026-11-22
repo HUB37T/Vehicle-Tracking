@@ -1,0 +1,32 @@
+# Kamera rekaman lokal jalan terbagi, versi CFR 1280x720; periksa framing sebelum dipakai.
+# Tuning inferensi; bobot YOLO26n dan MobileNet tetap pretrained.
+model_weights: models/yolo26n.pt
+tracker_config: bytetrack.yaml  # fuse_score: true
+device: cpu
+imgsz: 640
+detector_conf: 0.10
+detector_deduplicate_classes: true
+preprocess:
+  mode: none
+truck_review_weights: models/mobilenet_v3_large-5c1a4163.pth
+truck_review_light_threshold: 0.30
+truck_review_minivan_only: true
+deduplicate_crossings: false
+counting_line:
+  line_id: main
+  p1: [0.02, 0.80]
+  p2: [0.98, 0.80]
+  epsilon_height_fraction: 0.01
+congestion:
+  enabled: true
+  dropout_grace_seconds: 0.20
+  roi: [0.02, 0.61, 0.98, 0.99]
+traffic_zones:
+  - zone_id: left
+    name: Jalur kiri
+    polygon: [[0.13, 0.61], [0.46, 0.61], [0.45, 1], [0, 1]]
+  - zone_id: right
+    name: Jalur kanan
+    polygon: [[0.50, 0.61], [0.84, 0.61], [1, 1], [0.49, 1]]
+heatmap_enabled: true
+quality_check: true

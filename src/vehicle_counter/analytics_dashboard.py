@@ -127,7 +127,7 @@ def show_image_analytics(result, manifest):
         if path := result.artifact_paths.get("process_evidence"):
             st.image(
                 path,
-                caption="Ruang warna, prapemrosesan, YOLO, dan tracker run ini",
+                caption="Prapemrosesan, deteksi, dan pelacakan pada frame yang sama",
                 width="stretch",
             )
         else:

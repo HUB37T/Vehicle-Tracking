@@ -87,6 +87,86 @@ def test_crossing_flag_survives_neutral_frames(make_counter, make_observation):
     assert len(feed(counter, make_observation, [30, 49.5, 50.5, 50, 70])) == 1
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_dense_guard_keeps_one_nested_motorcycle_and_separate_neighbor(
+    make_counter, make_observation, reverse
+):
+    counter = make_counter(guard_dense_crossings=True)
+    ys = [42, 45, 48, 54] if not reverse else [58, 54, 52, 46]
+    for frame, y in enumerate(ys):
+        counter.update(
+            [
+                replace(
+                    make_observation(frame, y, track_id=1, class_name="motorcycle"),
+                    bbox_xyxy=(32, y - 28, 55, y),
+                ),
+                replace(
+                    make_observation(frame, y, track_id=2, class_name="motorcycle"),
+                    bbox_xyxy=(35, y - 23, 51, y),
+                ),
+                replace(
+                    make_observation(frame, y, track_id=3, class_name="motorcycle"),
+                    bbox_xyxy=(49, y - 23, 70, y),
+                ),
+            ]
+        )
+    assert [e.track_id for e in counter.events] == [1, 3]
+    assert (
+        counter.summary().by_class_direction["motorcycle"]["B_TO_A" if reverse else "A_TO_B"] == 2
+    )
+    assert counter.dense_crossing_adjustments[0]["kept_track_id"] == 1
+
+
+def test_dense_guard_uses_recent_consensus_over_stale_class_votes(make_counter, make_observation):
+    counter = make_counter(guard_dense_crossings=True)
+    for frame in range(15):
+        label = "truck" if frame < 11 else "car"
+        counter.update([make_observation(frame, 40 if frame < 14 else 60, class_name=label)])
+    assert [e.class_name for e in counter.events] == ["car"]
+    assert counter.dense_crossing_adjustments[0]["voted_class"] == "truck"
+
+
+def test_dense_guard_keeps_car_against_weak_recent_truck_votes(make_counter, make_observation):
+    counter = make_counter(guard_dense_crossings=True)
+    for frame in range(15):
+        item = make_observation(
+            frame, 40 if frame < 14 else 60, class_name="car" if frame < 11 else "truck"
+        )
+        counter.update([replace(item, confidence=0.42)])
+    assert [e.class_name for e in counter.events] == ["car"]
+    assert counter.dense_crossing_adjustments == []
+
+
+def test_dense_guard_does_not_promote_box_trucks_to_bus_on_short_consensus(
+    make_counter, make_observation
+):
+    counter = make_counter(guard_dense_crossings=True)
+    for frame in range(15):
+        counter.update(
+            [
+                make_observation(
+                    frame, 40 if frame < 14 else 60, class_name="truck" if frame < 11 else "bus"
+                )
+            ]
+        )
+    assert [e.class_name for e in counter.events] == ["truck"]
+
+
+def test_dense_guard_prefers_full_cargo_box_over_nested_cab(make_counter, make_observation):
+    counter = make_counter(guard_dense_crossings=True)
+    for frame, y in enumerate([38, 40, 42, 44, 49, 54]):
+        timestamp = frame / 30
+        cab = make_observation(frame, y, track_id=1, class_name="car", timestamp=timestamp)
+        cargo = make_observation(frame, y, track_id=2, class_name="truck", timestamp=timestamp)
+        counter.update(
+            [
+                replace(cab, bbox_xyxy=(38, y - 20, 58, y)),
+                replace(cargo, bbox_xyxy=(34, y - 30, 60, y)),
+            ]
+        )
+    assert [(event.track_id, event.class_name) for event in counter.events] == [(2, "truck")]
+
+
 @pytest.mark.parametrize("reverse_order", [False, True])
 def test_lanes_use_the_crossing_point_and_attribute_overlap_once(
     make_counter, make_observation, reverse_order

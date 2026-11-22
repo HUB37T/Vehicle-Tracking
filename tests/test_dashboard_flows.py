@@ -474,3 +474,99 @@ def test_queue_cancel_button_does_not_start_inference(dashboard_project):
     assert not app.exception
     queue = JobQueue(root / "outputs" / "jobs", root)
     assert queue.get(job)["status"] == "cancelled" and queue.claim() is None
+
+
+def test_mpv_review_requires_local_weights_and_snapshots_threshold(dashboard_project):
+    from streamlit.testing.v1 import AppTest
+
+    from vehicle_counter.jobs import JobQueue
+
+    root, video = dashboard_project
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    next(w for w in app.checkbox if w.label == "Periksa ulang kelas MPV/truk").check().run()
+    assert not app.exception
+    assert next(w for w in app.button if w.label == "Mulai analisis").disabled
+    next(w for w in app.checkbox if w.label == "Fokus koreksi MPV/minivan").check().run()
+    next(w for w in app.checkbox if w.label == "Kurangi kotak ganda berbeda kelas").check().run()
+    (root / "models" / "mobilenet_v3_large-5c1a4163.pth").write_bytes(b"fixture, no inference")
+    next(w for w in app.number_input if w.label == "Ambang bukti kendaraan ringan").set_value(
+        0.30
+    ).run()
+    assert not next(w for w in app.button if w.label == "Mulai analisis").disabled
+    next(w for w in app.button if w.label == "Uji singkat").click().run()
+    job = JobQueue(root / "outputs" / "jobs", root).get(app.session_state["pending_job"])
+    config = job["payload"]["config"]
+    assert config["truck_review_light_threshold"] == 0.30
+    assert config["truck_review_minivan_only"] is True
+    assert config["detector_deduplicate_classes"] is True
+    assert Path(config["truck_review_weights"]).name == "mobilenet_v3_large-5c1a4163.pth"
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_local_recording_profile_snapshots_the_tuned_settings(
+    dashboard_project, monkeypatch, dense
+):
+    from streamlit.testing.v1 import AppTest
+
+    from vehicle_counter.jobs import JobQueue
+
+    root, video = dashboard_project
+    monkeypatch.chdir(root)
+    project = Path(__file__).resolve().parents[1]
+    (root / "configs" / "experiments").mkdir()
+    shutil.copyfile(
+        project / "configs" / "experiments" / "local-20261119-mpv.yaml",
+        root / "configs" / "experiments" / "local-20261119-mpv.yaml",
+    )
+    shutil.copyfile(
+        project / "configs" / "bytetrack-dense.yaml", root / "configs" / "bytetrack-dense.yaml"
+    )
+    for name in ("yolo26n.pt", "mobilenet_v3_large-5c1a4163.pth"):
+        (root / "models" / name).write_bytes(b"fixture, no model inference")
+    video = video.rename(video.with_name("local-20261119-VID_20261119_091928-cfr.mp4"))
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    next(w for w in app.radio if w.label == "Profil analisis").set_value("Pemulihan crossing").run()
+    if dense:
+        label = "ByteTrack untuk kendaraan rapat (eksperimen)"
+        option = next(w for w in app.checkbox if w.label == label)
+        option.check().run()
+    assert not app.exception
+    next(w for w in app.button if w.label == "Uji singkat").click().run()
+    job = JobQueue(root / "outputs" / "jobs", root).get(app.session_state["pending_job"])
+    config = job["payload"]["config"]
+    assert config["guard_dense_crossings"] is dense
+    expected_tracker = "bytetrack-dense.yaml" if dense else "bytetrack.yaml"
+    assert Path(config["tracker_config"]).name == expected_tracker
+    assert Path(config["model_weights"]).name == "yolo26n.pt"
+    assert config["detector_deduplicate_classes"] is True
+    assert config["truck_review_minivan_only"] is True
+    assert config["truck_review_light_threshold"] == 0.30
+    assert config["counting_line"]["p1"] == [0.02, 0.80]
+    assert config["counting_line"]["p2"] == [0.98, 0.80]
+    assert len(config["traffic_zones"]) == 2
+    assert config["heatmap_enabled"] is True
+
+
+def test_fine_tuned_model_is_optional_and_warns_about_experimental_status(dashboard_project):
+    from streamlit.testing.v1 import AppTest
+
+    from vehicle_counter.jobs import JobQueue
+
+    root, video = dashboard_project
+    (root / "models" / "yolo26n-local-ft.pt").write_bytes(b"fixture, no inference")
+    app = AppTest.from_file(str(root / "app.py"), default_timeout=20).run()
+    next(w for w in app.selectbox if w.label == "Sumber video").select(video.name).run()
+    model = next(w for w in app.selectbox if w.label == "Model deteksi")
+    assert model.value == "Sesuai profil"
+    model.select("YOLO26n — fine-tuning lokal (eksperimen)").run()
+    assert not app.exception
+    assert any("belum mengungguli pretrained" in w.value for w in app.warning)
+    assert (
+        "YOLO26n pretrained vs fine-tuning lokal"
+        in next(w for w in app.radio if w.label == "Yang dibandingkan").options
+    )
+    next(w for w in app.button if w.label == "Uji singkat").click().run()
+    job = JobQueue(root / "outputs" / "jobs", root).get(app.session_state["pending_job"])
+    assert Path(job["payload"]["config"]["model_weights"]).name == "yolo26n-local-ft.pt"

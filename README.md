@@ -82,9 +82,9 @@ Masukan baseline adalah MP4 lokal CFR dengan dimensi genap untuk ekspor H.264/yu
 
 Folder `outputs/<run_id>/` berisi `events.csv`, `counts.csv`, `crossing_audit.csv`, `run.json`, `annotated.mp4`, dan `process_evidence.png`. Audio sumber tidak disertakan. Run diberi status `completed` setelah output video berhasil didekode seluruhnya dan hitungan cocok dengan event log. Kegagalan sesudah run dibuat menghasilkan metadata `failed`, penjelasan error, dan hitungan parsial. CLI mengembalikan kode keluar bukan nol.
 
-`process_evidence.png` memperlihatkan satu frame yang sama pada enam panel. Urutannya adalah frame sumber, kanal L setelah konversi BGR ke Lab, kanal L setelah CLAHE, masukan aktual detektor, deteksi YOLO dengan confidence, dan track ByteTrack dengan ID serta jejak. Panel CLAHE menandai status tidak aktif pada mode lain. Bukti memakai crossing pertama jika ada, dengan frame lain yang menampilkan deteksi atau track sebagai cadangan. `run.json` mencatat indeks, waktu, dan alasan pemilihan frame.
+`process_evidence.png` di **Hasil → Bukti materi → Tahapan model** menampilkan frame sumber, hasil prapemrosesan sesuai mode, deteksi YOLO dengan confidence, dan hasil pelacakan. Gamma, Gaussian, unsharp, dan median menampilkan hasil beserta parameternya untuk dibandingkan dengan frame sumber. CLAHE dan bilateral + CLAHE menampilkan kanal L sebelum dan sesudah penyesuaian serta hasil BGR yang dipakai detektor. Jika detektor memakai ROI, panel masukan memperlihatkan potongan aktualnya. Bukti memakai crossing pertama jika ada, dengan frame lain yang menampilkan deteksi atau track sebagai cadangan. `run.json` mencatat indeks, waktu, dan alasan pemilihan frame.
 
-Setiap run membuat detector/tracker dan counter baru. Setiap frame menjalankan satu inferensi deteksi, lalu asosiasi tracker yang dipilih; anchor counting berasal dari kotak deteksi yang cocok dengan ID pada frame tersebut. Konfigurasi tracker aktual, bobot/checksum, perangkat, versi, dan waktu pemrosesan dicatat di `run.json`. Panel keenam menampilkan nama tracker aktual, ByteTrack atau DeepSORT.
+Setiap run membuat detector/tracker dan counter baru. Setiap frame menjalankan satu inferensi deteksi, lalu asosiasi tracker yang dipilih; anchor counting berasal dari kotak deteksi yang cocok dengan ID pada frame tersebut. Konfigurasi tracker aktual, bobot/checksum, perangkat, versi, dan waktu pemrosesan dicatat di `run.json`. Panel pelacakan menampilkan nama tracker aktual, ByteTrack atau DeepSORT.
 
 `crossing_audit.csv` menambah koordinat box, anchor, dan tanda tumpang tindih untuk setiap event yang diterima counter. Tab **Audit crossing** menampilkan tabel serta frame video hasil untuk ID yang dipilih. Tanda `anchor_inside_other_detection` menunjukkan kandidat oklusi untuk ditinjau, bukan vonis event salah. Event tanpa tanda juga belum terverifikasi benar. Kontrak tujuh kolom `events.csv` tetap sama.
 
@@ -172,6 +172,39 @@ Jika video lokal `vehicles-3-bytetrack-test.mp4` tersedia, pilih profil **Pemuli
 
 Untuk video lain, `--max-seconds 5 --congestion-roi 0.05 0.45 0.95 0.95` mengaktifkan indikator pada area ternormalisasi tersebut. Hilangkan `--max-seconds` untuk analisis penuh. Parameter lengkap berada di `CongestionConfig`/bagian `congestion` YAML; lihat [acuan indikator macet](CONTEXT.md#132-indikator-macet-awal).
 
+### Kendaraan rapat dan deteksi antrean yang terputus
+
+Untuk enam klip kamera diam lokal, pilih **Pemulihan crossing** agar geometri, YOLO26n pretrained, dan pemeriksa MPV terisi. Pilih **Model dan pelacakan → ByteTrack untuk kendaraan rapat (eksperimen)** untuk mencoba sambungan ID yang lebih longgar. Pasang garis pada bagian jalan tempat kendaraan terlihat jelas di kedua sisi. Tinjau crossing dekat ujung garis dan saat motor saling menutupi dengan **Audit crossing**. Profil eksperimen mempertahankan `fuse_score: true` dan memakai `match_thresh: 0.87`.
+
+Tinjauan lokal menemukan dua crossing motor A→B yang pulih pada `091928` dan tujuh motor B→A pada `092328`. Jumlah event sistem pada empat klip berubah dari 32, 21, 24, dan 60 menjadi 34, 21, 26, dan 70. Terdapat kandidat duplikasi motor dan pergeseran kelas. Gunakan pilihan eksperimen untuk perbandingan per kamera. Tinjauan memeriksa perubahan yang terlihat, dengan anotasi lengkap seluruh kendaraan masih diperlukan.
+
+Di **Pengaturan indikator macet**, **Toleransi deteksi terputus saat macet** menunggu sampel baru jika bukti gerak antrean yang sudah terkonfirmasi hilang sesaat. Profil lokal memakai 0,20 detik. Pada klip `092139`, uji dengan tracker dan garis yang sama memperpanjang indikasi area gabungan dari 4,0–12,0 detik menjadi 4,0–26,2 detik. Area lajur kanan tetap mendeteksi antrean sampai sekitar 26,5 detik pada kedua run. Hasil visual menunjukkan lajur kanan masih mengantre setelah detik 12. Untuk menilai kapan antrean mulai dan terurai, lihat status per lajur pada kamera diam. Rekap crossing tetap 24 pada kedua uji toleransi.
+
+Keluaran eksperimen dan tinjauan kejadian tersimpan lokal di `outputs/crossing-traffic-20261119/`.
+
+Pilihan **ByteTrack untuk kendaraan rapat (eksperimen)** juga memeriksa kelas dari deteksi terbaru menjelang crossing dan menyaring pasangan ID searah ketika kotaknya tumpang tindih kuat selama beberapa frame. Ringkasan memakai kelas final pada event. Untuk melihat kapan keputusan terjadi, buka **Unduhan → Unduh koreksi crossing kendaraan rapat**. Jalur CLI yang setara untuk rekaman pada sudut jalan terbagi:
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/local-20261119-VID_20261119_091928-cfr.mp4 --config configs/experiments/local-20261119-mpv.yaml --tracker-config configs/bytetrack-dense.yaml --guard-dense-crossings
+```
+
+Rekap arah mengikuti posisi garis yang tersimpan. Video dari kamera bergerak masih perlu diperiksa secara terpisah karena posisi garis terhadap jalan berubah selama panning.
+
+Pada empat klip yang sebelumnya diuji dengan opsi kendaraan rapat, hasil perbaikan adalah:
+
+| Klip | A→B sebelum → sesudah | B→A sebelum → sesudah | Crossing ganda disaring | Penyesuaian kelas |
+| --- | ---: | ---: | ---: | ---: |
+| `091928` | 30 → 30 | 4 → 4 | 0 | 1 |
+| `092102` | 2 → 2 | 19 → 19 | 0 | 1 |
+| `092139` | 19 → 18 | 7 → 7 | 1 | 1 |
+| `092328` | 38 → 36 | 32 → 32 | 2 | 1 |
+
+Tinjauan visual mengonfirmasi duplikasi motor pada `092139` detik 29,97, motor pada `092328` detik 8,90, dan kotak kabin/kendaraan yang sama pada `092328` detik 72,17. Empat kelas disesuaikan setelah melihat kendaraan pada frame sumber. Dua crossing motor A→B dan tujuh B→A yang sebelumnya dipulihkan tetap tercatat. Ini audit kasus, dengan anotasi lengkap dan peninjau kedua masih diperlukan. Rincian lokal tersedia di `outputs/dense-crossing-repair-20261119/`.
+
+Jika pemeriksa crop aktif, hasilnya juga dipakai saat voting seluruh track menunjukkan mobil dan konsensus dekat garis menunjukkan truk. Bukti SUV dari crop dapat mempertahankan kelas mobil. Keputusan ini tercatat dengan alasan `passenger_class_conflict` di `truck_review.csv`. Pemilihan posisi garis dan keterlihatan kendaraan tetap memengaruhi crossing, termasuk motor yang berhenti dekat garis.
+
+Uji lokal mencakup 10 rekaman penuh. Pada delapan rekaman kamera diam terdapat tujuh penyaringan duplikasi dan empat penyesuaian kelas, dengan kasusnya diperiksa pada frame sumber. Dua rekaman kamera bergerak juga diproses, dengan `camera_motion_limit` pada tabel perbandingan lokal. Untuk empat klip pada tabel, pembanding memakai ByteTrack kendaraan rapat sebelum perbaikan. Enam klip lainnya dibandingkan dengan run ByteTrack biasa yang sudah tersedia. `direction-comparison.csv` dan `visual-review.csv` di folder keluaran mencatat kedua pembanding dan kasus yang ditinjau.
+
 ### Zona per lajur dan heatmap
 
 Buka **Zona per lajur/arah**, centang **Analisis beberapa zona jalan**, pilih 1–4 zona, lalu beri nama sesuai lajur atau arah. Atur titik poligon agar tiap zona mencakup bagian garis hitung yang dilalui kendaraan di lajur tersebut. Poligon memakai 3–12 titik dan sisinya tidak boleh bersilangan.
@@ -182,11 +215,85 @@ Jika indikator macet aktif, **Lalu lintas** juga menampilkan status per zona dan
 
 Centang **Buat heatmap keberadaan kendaraan**, lalu buka **Hasil → Heatmap** setelah analisis. Heatmap memakai anchor hasil tracking yang sama, dengan penambahan `1/FPS` detik per sel yang teramati setiap frame. `heatmap.npz` menyimpan grid mentah 128×128, `heatmap.json` menjelaskan satuan/skala, dan `heatmap.png` menampilkan warna relatif pada frame sumber. Gaussian smoothing hanya memperhalus tampilan. Warna hangat bukan bukti macet atau jumlah kendaraan unik. CLI: tambahkan `--heatmap`.
 
+### Pemeriksaan MPV yang terbaca truk
+
+Di **Model dan pelacakan**, aktifkan **Periksa ulang kelas MPV/truk**, centang **Fokus koreksi MPV/minivan**, lalu gunakan **Ambang bukti kendaraan ringan: 0,30** untuk mencoba setelan rekaman lokal. Aktifkan juga **Kurangi kotak ganda berbeda kelas** untuk mengatasi satu kendaraan yang terdeteksi ganda sebagai mobil/bus/truk. Siapkan bobot pemeriksa sekali:
+
+```powershell
+curl.exe -fL https://download.pytorch.org/models/mobilenet_v3_large-5c1a4163.pth -o models/mobilenet_v3_large-5c1a4163.pth
+```
+
+Analisis memverifikasi checksum bobot dan tidak mengunduhnya diam-diam. Kandidat crossing hasil voting `truck` diperiksa dengan MobileNetV3-Large pada crop frame sumber. Dalam mode fokus MPV, kelas teratas wajib `minivan` dan jumlah skor kelompok kendaraan ringan minimal 0,30. Minibus, moving van, dan truk tidak otomatis disamakan dengan MPV. Skor ini merupakan heuristik, bukan confidence YOLO atau kepastian klasifikasi.
+
+Pada video hasil, `car (review)` menandai koreksi sejak kendaraan melewati garis; sebelumnya label masih mengikuti detektor. **Unduhan → Unduh pemeriksaan MPV dan truk** menyediakan `truck_review.csv` berisi keputusan dan skor tiap kandidat. Rekap, daftar crossing, dan hitungan per lajur memakai kelas final yang sama. Panel bukti YOLO/tracker menampilkan kelas asli detektor/tracker, bukan kelas hasil koreksi crop; kotak pada panel YOLO sudah melewati filter kotak ganda jika diaktifkan.
+
+Filter kotak ganda memakai IoU minimal 0,90 dan mempertahankan kotak dengan confidence lebih tinggi sebelum tracking. Hanya konflik antarkelas mobil/bus/truk yang diperiksa; kotak motor tidak disaring. Filter ini berbeda dari `deduplicate_crossings`, yang membandingkan kandidat crossing sesudah tracking. Filter tidak menjamin seluruh ID switch atau hitung ganda teratasi. Jumlah kotak yang disaring dicatat pada `tracker.duplicate_box_filter` di `run.json`.
+
+Profil [local-20261119-mpv.yaml](configs/experiments/local-20261119-mpv.yaml) menyediakan YOLO26n, masukan 640, confidence 0,10, tanpa prapemrosesan, ByteTrack `fuse_score: true`, filter kotak antarkelas, dan fokus minivan. Garis/zona khusus sudut jalan terbagi pada rekaman lokal; periksa posisinya untuk kamera lain. Jalankan dari folder proyek pada video CFR yang sudah disiapkan:
+
+Pada UI, pilih salah satu dari enam rekaman kamera diam `local-20261119-VID_20261119_*-cfr.mp4` lalu **Profil analisis → Pemulihan crossing** untuk mengisi profil ini. Klip persimpangan dengan kamera bergerak tidak mendapat preset tersebut.
+
+```powershell
+.\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/local-20261119-VID_20261119_091928-cfr.mp4 --config configs/experiments/local-20261119-mpv.yaml
+```
+
+Tuning ini memilih parameter inferensi dan pemeriksa kelas. Bobot pretrained belum dilatih ulang; fine-tuning YOLO memerlukan label kotak lengkap serta pemisahan video train/validation/test.
+
+Hasil lokal 19 November pada `VID_20261119_091928.mp4` versi CFR:
+
+| Hasil | Mobil | Motor | Bus | Truk | Total crossing |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline YOLO26n 640 | 17 | 12 | 0 | 5 | 34 |
+| Fokus MPV + filter kotak antarkelas | 18 | 12 | 0 | 2 | 32 |
+
+Tiga MPV pada 1,50; 2,63; dan 13,50 detik dikoreksi ke mobil. Dua crossing ganda pada 1,50 dan 10,17 detik dihilangkan; pasangan kotak baseline memiliki IoU 0,973 dan 0,970 serta menampilkan kendaraan fisik yang sama. Pada `092328`, duplikasi minibus pada 68,20 detik dihilangkan sehingga total 61 menjadi 60. Jumlah motor pada keenam klip kamera diam tetap sama dengan baseline. Ini pemeriksaan kasus tertentu, belum GT lengkap atau mAP deteksi.
+
+Percobaan ukuran 960 pada klip pertama menghasilkan 42 crossing dan 22 event motor, tetapi salah menggolongkan satu kendaraan barang sebagai mobil. Percobaan `agnostic_nms` juga membuat satu motor nyata terlewat pada `092102`; filter terbatas pada profil akhir mempertahankan 10 event motor baseline klip itu. Ukuran lebih besar dan jumlah crossing lebih tinggi belum otomatis lebih akurat. Manifest/konfigurasi/keluaran lokal berada di `outputs/local-tuning-20261119/`; baseline tetap tersedia di `outputs/local-recordings-20261119/`.
+
+Sepuluh rekaman diuji ulang lokal. Delapan klip kamera diam diuji dengan filter akhir; dua klip kamera bergerak dipakai sebagai kontrol tanpa filter kotak. Tiga MPV serta 10 contoh truk/pickup diperiksa pada crossing video lengkap: MPV menjadi mobil dan truk/pickup tetap truk. Tiga crossing yang hilang cocok dengan duplikasi terverifikasi; event lain memiliki pasangan spasial/temporal pada baseline, tetapi pencocokan itu belum merupakan audit identitas lengkap. `comparison.csv`, `verified-class-cases.json`, dan manifest tiap run menyimpan rincian lokal. Hitungan dari kamera bergerak tetap memiliki keterbatasan garis tetap. Pengujian kode/UI terbaru mencakup 256 tes yang lulus.
+
 ### Menyiapkan label untuk fine-tuning
 
 Pada **Audit crossing**, buka **Beri kotak manual untuk calon dataset YOLO**, centang editor kotak, lalu pilih frame sumber. Pilih kelas dan tarik kotak; klik kotak untuk mengubah kelas atau memperbaiki sudutnya. Konfirmasi setelah seluruh kendaraan diperiksa. Frame tanpa kotak yang dikonfirmasi disimpan sebagai contoh negatif. Jika sumber run lama hilang, unggah ulang video asli; checksum wajib sama.
 
-Label tersimpan sebagai revisi baru di `outputs/dataset-labels/`, terpisah dari event counting dan catatan crossing. Ekspor ZIP berisi PNG sumber tanpa overlay, label YOLO `class cx cy width height` ternormalisasi, metadata, dan petunjuk. Kelas dataset: 0 `car`, 1 `motorcycle`, 2 `bus`, 3 `truck`. Ekspor memakai revisi terakhir tiap video/frame, maksimal 200 frame/150 MB melalui UI. Belum ada split otomatis: pisahkan train/validation/test berdasarkan **video sumber**, dan tinjau label bersama teman sebelum pelatihan. Fitur ini belum melatih bobot baru atau menghasilkan mAP.
+Label tersimpan sebagai revisi baru di `outputs/dataset-labels/`, terpisah dari event counting dan catatan crossing. Ekspor ZIP berisi PNG sumber tanpa overlay, label YOLO `class cx cy width height` ternormalisasi, metadata, dan petunjuk. Kelas dataset: 0 `car`, 1 `motorcycle`, 2 `bus`, 3 `truck`. MPV, SUV, angkot, dan van kecil masuk `car`; bus besar masuk `bus`. Ekspor memakai revisi terakhir tiap video/frame, maksimal 200 frame/150 MB melalui UI. Pisahkan train/validation/test berdasarkan **video sumber**, dan tinjau label bersama teman sebelum pelatihan. Editor tidak otomatis melatih bobot; perintah pelatihan terpisah dijelaskan berikut.
+
+### Fine-tuning bobot YOLO lokal
+
+Fine-tuning bobot sudah dijalankan sebagai eksperimen pada 19 November 2026 dengan RTX 4070 laptop, PyTorch 2.5.1+cu121, torchvision 0.20.1+cu121, dan Ultralytics 8.4.207. Lingkungan `.venv-train` dipisahkan dari `.venv` aplikasi CPU. Instalasi baru dapat memakai Python 3.12 dan [paket CUDA resmi PyTorch](https://pytorch.org/get-started/previous-versions/#v251):
+
+```powershell
+py -3.12 -m venv .venv-train
+.\.venv-train\Scripts\python.exe -m pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+.\.venv-train\Scripts\python.exe -m pip install -r requirements-training.txt
+```
+
+Pada laptop pengembangan, `.venv-train` dibuat dengan `--system-site-packages` untuk menggunakan instalasi CUDA yang sudah tersedia. Tidak perlu mengganti paket `.venv` aplikasi. [Panduan fine-tuning Ultralytics](https://docs.ultralytics.com/guides/finetuning-guide/) menjelaskan transfer bobot dan pemilihan lapisan yang dibekukan.
+
+Dataset awal terdiri dari **17 crop area jalan / 76 kotak** untuk training, **5 crop / 30 kotak** untuk validasi, dan **6 crop / 18 kotak** untuk uji, termasuk dua crop jalan kosong. Proposal detektor diperiksa/dikoreksi visual oleh AI agent; label belum ditinjau independen oleh manusia. Ini dataset awal yang sangat kecil, belum mencakup bus besar. Training memakai tiga video jalan terbagi; validasi satu video lain; uji dua video WhatsApp dari sudut kamera lain. Video-video itu sudah dipakai pada eksperimen inferensi sebelumnya, sehingga bukan koleksi uji akhir proyek yang sama sekali belum pernah dilihat.
+
+Manifest label tersimpan lokal di `outputs/fine-tuning-20261119/reviewed-labels.json`. Setiap entri berisi `image`, `source_group` (checksum video asli), `split`, `reviewed`, `reviewer`, dan `boxes` berupa kelas serta kotak piksel `[x1,y1,x2,y2]` relatif pada gambar. Asal video, frame, ROI crop, dan cara pelabelan ikut dicatat. `prepare` menolak frame belum ditinjau, gambar identik yang berulang, dan video sumber yang melintasi split. Folder tujuan harus baru:
+
+```powershell
+.\.venv-train\Scripts\python.exe -m vehicle_counter.fine_tuning prepare outputs/fine-tuning-20261119/reviewed-labels.json --output outputs/fine-tuning-repeat/dataset
+.\.venv-train\Scripts\python.exe -m vehicle_counter.fine_tuning train outputs/fine-tuning-repeat/dataset/dataset.yaml --weights models/yolo26n.pt --project outputs/fine-tuning-repeat/training --epochs 30 --device 0
+```
+
+Parameter awal: ukuran 640, batch 4, seed 37, AdamW, learning rate 0,0002, freeze 10 lapisan, dan early stopping 10 epoch. Kandidat empat kelas berhenti pada epoch 23 dan memilih `best.pt` dari epoch 13. Kandidat kedua mempertahankan 80 kelas pretrained, freeze 22 dan learning rate 0,0001, memakai opsi `--keep-pretrained-head --freeze 22 --learning-rate 0.0001`. Opsi itu mengubah **indeks label berdasarkan nama kelas**, misalnya car 0→2 dan truck 3→7; tidak memakai label empat kelas langsung pada head COCO.
+
+Kandidat dipilih berdasarkan validasi, kemudian hanya kandidat terpilih dan pretrained dievaluasi pada split uji. Evaluasi AP memakai ukuran/batch/confidence/IoU yang sama, dengan label baseline dipetakan ke indeks COCO. Hasil berikut hanya pada crop berlabel awal, bukan akurasi counting atau jaminan kinerja CCTV:
+
+| Bobot | mAP50–95 validasi | mAP50 uji | mAP50–95 uji |
+| --- | ---: | ---: | ---: |
+| Pretrained | 0,9360 | 0,9308 | 0,8170 |
+| Fine-tuning empat kelas | 0,8193 | 0,8428 | 0,6369 |
+| Fine-tuning head pretrained | 0,8044 | Tidak dipilih | Tidak dipilih |
+
+**Bobot eksperimen belum mengungguli pretrained dan tidak mengganti default.** `models/yolo26n-local-ft.pt` tersedia lokal sebagai **YOLO26n — fine-tuning lokal (eksperimen)** di UI, beserta pilihan perbandingannya. Sidecar bobot menyimpan checksum dan metadata training. Bobot, gambar, label lokal, serta artefak diabaikan Git; teman perlu memperoleh dataset/bobot secara terpisah.
+
+Uji integrasi video membandingkan pretrained dan kandidat dengan MobileNet dimatikan, filter kotak aktif, dan ByteTrack `fuse_score: true`. Klip `091928` diproses penuh; masing-masing video WhatsApp diuji pada 15 detik awal. Hitungan bertambah pada sebagian run, tetapi belum ada GT lengkap untuk menyatakan crossing tambahan benar. Dua contoh MPV yang diminta juga belum berubah menjadi mobil pada prediksi full-frame kandidat tanpa MobileNet. Gunakan model utama dan profil pemeriksa MPV untuk demo saat ini. Eksperimen selanjutnya membutuhkan lebih banyak anotasi full-frame yang ditinjau manusia, contoh bus, dan koleksi uji baru.
+
+Artefak lokal: `training/`, `training-retained/`, `dataset/provenance.json`, `detection-evaluation.json`, `development-cases.json`, dan `video-comparison.json` di `outputs/fine-tuning-20261119/`. Test ini sudah dibuka untuk diagnosis; hasil eksperimen berikutnya tidak boleh dianggap evaluasi final independen pada split yang sama.
 
 ### Hasil eksperimen filter tambahan
 

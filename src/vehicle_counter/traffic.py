@@ -146,6 +146,15 @@ class TrafficMonitor:
             len(selected) >= self.config.min_vehicles and occupancy >= self.config.min_occupancy
         )
         sufficient = len(speeds) >= max(1, (len(selected) + 1) // 2)
+        # Retry a missed sample while fresh observations can still support a confirmed queue.
+        if (
+            self._congested
+            and not sufficient
+            and self.current is not None
+            and timestamp - self.current.timestamp_seconds
+            < self.config.sample_seconds + self.config.dropout_grace_seconds - 1e-9
+        ):
+            return None
         candidate = crowded and sufficient and slow_fraction >= self.config.min_slow_fraction
         if candidate:
             if self._candidate_since is None:

@@ -52,6 +52,11 @@ def main() -> None:
         "--no-quality-check", action="store_true", help="Lewati pemeriksaan kualitas awal."
     )
     analyze.add_argument("--tracker-config", help="Ganti nama atau path YAML tracker.")
+    analyze.add_argument(
+        "--guard-dense-crossings",
+        action="store_true",
+        help="Periksa duplikasi dan konsensus kelas di dekat garis pada kendaraan rapat.",
+    )
     analyze.add_argument("--preprocess", choices=PREPROCESS_MODES, help="Ganti mode prapemrosesan.")
     analyze.add_argument("--max-seconds", type=float, help="Uji pada beberapa detik awal video.")
     analyze.add_argument(
@@ -124,6 +129,8 @@ def main() -> None:
                 config = replace(config, quality_check=False)
             if args.tracker_config:
                 config = replace(config, tracker_config=args.tracker_config)
+            if args.guard_dense_crossings:
+                config = replace(config, guard_dense_crossings=True)
             if args.preprocess:
                 config = replace(
                     config, preprocess=replace(config.preprocess, mode=args.preprocess)

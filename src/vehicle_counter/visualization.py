@@ -1,7 +1,7 @@
 """Original-frame annotation with bounded, per-run track trails."""
 
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 import cv2
 import numpy as np
@@ -28,6 +28,7 @@ class FrameAnnotator:
         summary: CountSummary,
         *,
         timestamp_seconds: float,
+        reviewed_track_ids: Collection[int] = (),
     ) -> NDArray[np.uint8]:
         frame = frame_bgr.copy()
         height, width = frame.shape[:2]
@@ -57,6 +58,8 @@ class FrameAnnotator:
             anchor = tuple(map(round, observation.anchor))
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             label = f"{observation.class_name} #{observation.track_id} {observation.confidence:.2f}"
+            if observation.track_id in reviewed_track_ids:
+                label = f"car (review) #{observation.track_id}"
             label_y = y2 - 8 if y1 < 110 else y1 - 5
             label_position = (max(0, x1), max(14, min(height - 5, label_y)))
             for text_color, thickness in (((0, 0, 0), 3), (color, 1)):

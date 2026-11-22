@@ -61,6 +61,9 @@ MODEL_COMPARISONS = {
     "YOLO11n vs YOLO11s": ("yolo11n", "yolo11s"),
     "YOLO11n vs YOLO26n": ("yolo11n", "yolo26n"),
 }
+if (ROOT / "models" / "yolo26n-local-ft.pt").is_file():
+    MODELS["YOLO26n — fine-tuning lokal (eksperimen)"] = "yolo26n-local-ft"
+    MODEL_COMPARISONS["YOLO26n pretrained vs fine-tuning lokal"] = ("yolo26n", "yolo26n-local-ft")
 MODES = {
     "none": "Tanpa prapemrosesan",
     "clahe": "CLAHE",
@@ -86,6 +89,16 @@ DEMO_EXPERIMENTS = {
         " · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · Dikonversi ke 30 FPS.",
     ),
 }
+DEMO_EXPERIMENTS.update(
+    {
+        f"local-20261119-VID_20261119_{time}-cfr.mp4": (
+            "local-20261119-mpv.yaml",
+            "Rekaman lokal versi CFR. Profil Pemulihan crossing memakai tuning MPV "
+            "dan filter kotak ganda untuk sudut kamera ini.",
+        )
+        for time in ("091928", "092025", "092102", "092139", "092214", "092328")
+    }
+)
 
 
 @contextmanager
@@ -197,6 +210,24 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
     if manifest.get("analysis_scope", {}).get("kind") == "preview":
         st.info(
             f"Hasil uji singkat pada {manifest['analyzed_duration_seconds']:.2f} detik awal video."
+        )
+    if review := manifest.get("truck_review"):
+        st.caption(
+            f"Pemeriksaan MPV/truk: {review.get('corrected_crossings', 0)} crossing "
+            "dikoreksi menjadi mobil. Label car (review) tampil setelah melewati garis; "
+            "skor pemeriksa crop bukan confidence YOLO."
+        )
+    if used.get("detector_deduplicate_classes"):
+        filtered = manifest.get("tracker", {}).get("duplicate_box_filter", {})
+        st.caption(
+            f"Filter kotak ganda aktif: {filtered.get('removed_boxes', 0)} kotak disaring "
+            "selama video; angka ini bukan jumlah kendaraan. Panel YOLO memakai kotak "
+            "setelah filter, dengan kelas asli detektor."
+        )
+    if dense := manifest.get("dense_crossings"):
+        st.caption(
+            f"Kendaraan rapat · {dense['suppressed_duplicates']} crossing ganda disaring · "
+            f"{dense['class_adjustments']} kelas disesuaikan dekat garis"
         )
 
     audit_rows = None
@@ -324,6 +355,8 @@ def _show_result(result: RunResult, source_name: str, mode: str, profile: str) -
             ("counts_csv", "Unduh rekap hitungan", "text/csv"),
             ("lane_counts_csv", "Unduh hitungan per lajur", "text/csv"),
             ("crossing_audit", "Unduh audit crossing", "text/csv"),
+            ("dense_crossing_adjustments", "Unduh koreksi crossing kendaraan rapat", "text/csv"),
+            ("truck_review_csv", "Unduh pemeriksaan MPV dan truk", "text/csv"),
             ("timeline_csv", "Unduh grafik waktu CSV", "text/csv"),
             ("traffic_csv", "Unduh status lalu lintas", "text/csv"),
             ("traffic_episodes_csv", "Unduh waktu indikasi macet", "text/csv"),
@@ -486,12 +519,22 @@ def _show_setup(queue, owner, has_active) -> None:
                     congestion.hold_seconds,
                     0.5,
                 )
+                dropout_grace = st.number_input(
+                    "Toleransi deteksi terputus saat macet (detik)",
+                    0.0,
+                    0.5,
+                    congestion.dropout_grace_seconds,
+                    0.05,
+                    help="Tunggu sebentar untuk sampel baru jika bukti antrean yang sudah "
+                    "terkonfirmasi hilang sesaat.",
+                )
                 congestion = replace(
                     congestion,
                     min_vehicles=int(count),
                     min_occupancy=occupancy,
                     slow_speed=speed,
                     hold_seconds=hold,
+                    dropout_grace_seconds=dropout_grace,
                 )
                 numeric_roi = st.checkbox("Atur area dengan angka", value=False)
                 if numeric_roi:
@@ -511,6 +554,16 @@ def _show_setup(queue, owner, has_active) -> None:
         with st.expander("Model dan pelacakan"):
             tracker_name = st.selectbox("Tracker", ("ByteTrack", "DeepSORT (eksperimen)"))
             deepsort_selected = tracker_name.startswith("DeepSORT")
+            if not deepsort_selected and st.checkbox(
+                "ByteTrack untuk kendaraan rapat (eksperimen)",
+                help="Permudah penyambungan ID dan periksa crossing ganda serta konsistensi "
+                "kelas di dekat garis.",
+            ):
+                config = replace(
+                    config,
+                    tracker_config=str(ROOT / "configs/bytetrack-dense.yaml"),
+                    guard_dense_crossings=True,
+                )
             deepsort_available = find_spec("deep_sort_realtime") is not None
             deepsort_ready = deepsort_available
             if deepsort_selected:
@@ -535,12 +588,27 @@ def _show_setup(queue, owner, has_active) -> None:
             model_choice = st.selectbox("Model deteksi", ("Sesuai profil", *MODELS))
             if variant := MODELS.get(model_choice):
                 config = replace(config, model_weights=str(ROOT / "models" / f"{variant}.pt"))
+                if variant == "yolo26n-local-ft":
+                    st.warning(
+                        "Bobot fine-tuning ini masih eksperimen dari dataset awal. Hasil uji "
+                        "belum mengungguli pretrained dan belum mencakup bus besar."
+                    )
             size = st.selectbox("Ukuran masukan YOLO", ("Sesuai profil", 640, 960, 1280))
             conf = st.number_input(
                 "Confidence minimum detektor", 0.01, 1.0, config.detector_conf, 0.01
             )
             config = replace(
                 config, imgsz=config.imgsz if size == "Sesuai profil" else size, detector_conf=conf
+            )
+            config = replace(
+                config,
+                detector_deduplicate_classes=st.checkbox(
+                    "Kurangi kotak ganda berbeda kelas",
+                    value=config.detector_deduplicate_classes,
+                    help="Memilih kotak dengan skor lebih tinggi ketika kotak mobil, bus, "
+                    "atau truk hampir persis menumpuk. Periksa hasil pada kendaraan "
+                    "yang saling menutupi.",
+                ),
             )
             st.caption(
                 "YOLO11s dan masukan lebih besar membutuhkan waktu lebih lama. "
@@ -556,6 +624,41 @@ def _show_setup(queue, owner, has_active) -> None:
                     f"Bobot {model_path.name} belum tersedia. Siapkan melalui prepare-model "
                     f"--variant {model_path.stem}, lalu mulai ulang aplikasi."
                 )
+            review_enabled = st.checkbox(
+                "Periksa ulang kelas MPV/truk", value=bool(config.truck_review_weights)
+            )
+            if review_enabled:
+                minivan_only = st.checkbox(
+                    "Fokus koreksi MPV/minivan",
+                    value=config.truck_review_minivan_only,
+                    help="Profil rekaman lokal memakai opsi ini agar label seperti racer "
+                    "atau ambulance pada minibus/truk tidak langsung dikoreksi menjadi mobil.",
+                )
+                threshold = st.number_input(
+                    "Ambang bukti kendaraan ringan",
+                    0.01,
+                    1.0,
+                    config.truck_review_light_threshold,
+                    0.01,
+                    help="0,30 diuji pada rekaman lokal. Di bawah 0,40, hanya label minivan "
+                    "yang mendapat pelonggaran. Hasil tetap perlu diperiksa manual.",
+                )
+                review_path = (
+                    Path(config.truck_review_weights)
+                    if config.truck_review_weights
+                    else ROOT / "models" / "mobilenet_v3_large-5c1a4163.pth"
+                )
+                if not review_path.is_file():
+                    model_ready = False
+                    st.warning("Bobot pemeriksa kelas belum tersedia. Ikuti petunjuk pada README.")
+                config = replace(
+                    config,
+                    truck_review_weights=str(review_path),
+                    truck_review_light_threshold=threshold,
+                    truck_review_minivan_only=minivan_only,
+                )
+            else:
+                config = replace(config, truck_review_weights=None)
             mode = config.preprocess.mode
             if use_evaluation_settings:
                 st.caption(f"Prapemrosesan profil: {MODES[mode]}")

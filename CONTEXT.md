@@ -1,6 +1,6 @@
 # CONTEXT — Penghitung Kendaraan dari Video
 
-Versi dokumen: 0.5 | Dibuat: 6 November 2026 | Diperbarui: 16 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
+Versi dokumen: 0.7 | Dibuat: 6 November 2026 | Diperbarui: 19 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
 
 Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent yang membantu pengerjaan. Baca sebelum merancang, menulis kode, menguji, atau mengubah lingkup proyek. Isinya mencakup tujuan, istilah, spesifikasi perilaku, rancangan teknis awal, pembagian pekerjaan, dan kriteria selesai agar hasil dari agent yang berbeda dapat digabungkan.
 
@@ -19,6 +19,10 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 **Penyempurnaan berikutnya:** pilihan bobot YOLO11n/YOLO11s, kontrol ukuran/confidence, perbandingan model dengan parameter lain tetap, riwayat run, dan rentang waktu indikasi macet tersedia. YOLO11n tetap bawaan setelah uji dua klip; YOLO11s belum unggul konsisten. Kedua model memakai pretrained resmi, belum fine-tuning.
 
 **Perluasan 16 November 2026:** antrean FIFO aplikasi dengan satu proses inferensi aktif, pembatalan kooperatif, zona poligon per lajur, heatmap waktu keberadaan, pemeriksaan kualitas (histogram/Laplacian/FFT/ORB), filter median dan bilateral+CLAHE untuk eksperimen, serta pelabelan kotak manual tersedia. Bobot YOLO belum dilatih ulang. Penambahan materi dibedakan dari peningkatan akurasi yang harus dibuktikan dengan evaluasi.
+
+**Perluasan 19 November 2026:** YOLO26n pretrained tersedia sebagai pilihan model. Rekaman sendiri diuji lokal dalam versi constant frame rate. Profil khusus MPV menambahkan pemeriksaan crop dengan ambang yang dapat diatur dan pilihan fokus minivan; setiap koreksi dicatat dan ditandai pada video setelah crossing. Ini tuning inferensi, belum pelatihan ulang bobot YOLO.
+
+**Eksperimen fine-tuning 19 November 2026:** dua kandidat YOLO26n sudah dilatih pada GPU RTX 4070 laptop. Dataset awal terdiri dari 17 crop area jalan untuk training, 5 validasi, dan 6 uji dari video sumber terpisah. Label berasal dari proposal detektor yang diperiksa/dikoreksi visual oleh AI agent, belum ditinjau independen oleh manusia. Kandidat awal belum mengungguli pretrained pada data uji kecil dan tidak mengganti model utama. Bobot eksperimen serta metadata disimpan lokal; bus besar belum memiliki contoh pada dataset awal.
 
 Sebelum mengerjakan suatu tugas, agent harus:
 
@@ -75,6 +79,11 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Heatmap keberadaan | Akumulasi waktu observasi anchor kendaraan pada lokasi citra; warna menunjukkan keberadaan teramati, bukan bukti macet atau jumlah kendaraan fisik unik. |
 | Pemeriksaan kualitas | Pengukuran awal pencahayaan, ketajaman, dan gerak latar video untuk memberi petunjuk sebelum analisis, bukan skor akurasi model. |
 | Label pelatihan manual | Kotak kendaraan dan kelas yang diberikan pemeriksa pada frame sumber untuk calon dataset fine-tuning; berbeda dari catatan crossing dan prediksi model. |
+| Label awal tinjauan agent | Proposal kotak detektor yang diperiksa/dikoreksi melalui gambar oleh AI agent; asal label dinyatakan eksplisit dan belum sama dengan tinjauan manusia independen. |
+| Koreksi kelas crop | Pemeriksaan kedua pada potongan kendaraan ketika kandidat crossing berkelas truk; keputusan otomatis dapat mengubah kelas final event menjadi mobil. |
+| Filter kotak ganda antarkelas | Pemilihan satu kotak kendaraan berskor lebih tinggi ketika kotak mobil/bus/truk dengan kelas berbeda hampir identik pada frame yang sama; diterapkan sebelum tracking. |
+| Tuning parameter inferensi | Pemilihan model, ukuran masukan, prapemrosesan, dan ambang memakai video pengembangan; bobot pretrained tidak berubah. |
+| Fine-tuning bobot | Pelatihan lanjutan menggunakan kotak/kelas manual, dengan video sumber terpisah untuk pelatihan, validasi, dan uji. |
 | Run | Satu eksekusi analisis dengan video dan konfigurasi tetap, diidentifikasi oleh `run_id`. |
 | Ground truth / GT | Anotasi manual yang menjadi pembanding hasil sistem. |
 | Pasangan otomatis | Dua event dengan kelas, arah, dan waktu yang memenuhi toleransi evaluator; identitas kendaraan belum terverifikasi. |
@@ -196,6 +205,14 @@ Counter mempertahankan titik potong terakhir dari segmen antarobservasi selama t
 - Count bersumber dari event log. `total = jumlah event`, dan jumlah seluruh bucket kelas–arah harus sama dengan total.
 - Kelas event dipilih dari kelas yang paling sering muncul pada observasi valid track hingga event. Jika seri, gunakan jumlah confidence terbesar; jika masih seri, urutan alfabet nama kelas. Kelas event dibekukan setelah dicatat.
 - Profil eksperimen dapat mengisi `truck_review_weights` untuk memeriksa ulang crop kandidat `truck` dengan MobileNetV3-Large. Bukti kendaraan ringan yang cukup dapat mengubah kelas final menjadi `car` sebelum event dicatat.
+- `truck_review_light_threshold` bernilai 0,40 secara bawaan. Ambang lebih rendah hanya melonggarkan kandidat yang label crop teratasnya `minivan`; label kendaraan ringan lain tetap memerlukan skor kelompok minimal 0,40. Ini heuristik pemeriksaan kelas, bukan probabilitas kebenaran yang terkalibrasi.
+- `truck_review_minivan_only` bernilai `false` untuk kompatibilitas profil terdahulu. Profil MPV lokal memakai `true`: hanya label teratas `minivan` yang dapat mengoreksi kelas, termasuk ketika skor kelompok melebihi 0,40. Ini mencegah label seperti `racer` pada minibus memicu koreksi otomatis menjadi mobil.
+- Pemeriksaan crop berjalan pada saat crossing, sebelum kelas event dibekukan. Video menandai track yang dikoreksi sebagai `car (review)` sejak crossing; sebelum itu label mengikuti detektor. Confidence detektor tidak ditampilkan sebagai confidence koreksi. Panel bukti YOLO/tracker memperlihatkan kelas asli detektor/tracker, bukan koreksi crop; kotak YOLO sudah melewati filter kotak ganda jika filter diaktifkan.
+- `truck_review.csv` merekam setiap keputusan crop, kelas detektor, label crop, skor kelompok, ambang, dan kelas final. Rekap, CSV event, dan hitungan per lajur mengikuti kelas final event yang sama.
+- `detector_deduplicate_classes` merupakan filter opsional sebelum tracking, terpisah dari `deduplicate_crossings` pada counter. Hanya pasangan kelas berbeda di antara `car`, `bus`, dan `truck` dengan IoU minimal 0,90 yang disaring; skor lebih tinggi menang dan urutan kotak yang tersisa dipertahankan. Kotak motor dan pasangan sekelas tidak dibuang oleh filter ini. Metadata tracker mencatat jumlah kotak yang disaring selama run.
+- `guard_dense_crossings` aktif saat memilih **ByteTrack untuk kendaraan rapat (eksperimen)**. Sebelum mencatat crossing, counter memeriksa observasi aktual dari 0,30 detik terakhir. Kelas pada observasi terbaru dapat mengganti voting seluruh track jika didukung minimal empat observasi dan dua pertiga suara. Pergantian mobil ke truk juga memerlukan median confidence minimal 0,50. Jika pemeriksa crop aktif, konflik khusus mobil ke truk dapat mempertahankan kelas mobil dengan label teratas `jeep`, skor `jeep` minimal 0,20, dan skor kelompok kendaraan ringan yang melampaui ambang profil. Pemeriksa MPV tetap bekerja untuk kandidat truk lainnya.
+- Kelas bus dipilih dari voting track. Konsensus terbaru dapat mengganti bus dengan kelas lain, tetapi lonjakan deteksi bus sesaat tidak menaikkan kelas kendaraan lain menjadi bus. Aturan ini dipilih setelah truk boks terlihat salah berubah menjadi bus dalam uji lokal.
+- Guard memeriksa kandidat searah yang terpisah maksimal 0,35 detik. Penolakan duplikasi memerlukan bukti kotak yang hampir terkandung dan bergerak bersama dalam beberapa frame. Pasangan kelas berbeda memerlukan lebih banyak bukti, dan konflik kelas dengan motor tidak digabung. Untuk dua kandidat yang masuk pada frame sama dan saling menutupi, kotak yang lebih luas diperiksa dahulu. `dense_crossing_adjustments.csv` menyimpan penyesuaian kelas serta ID yang dipertahankan saat duplikasi disaring. `events.csv` tetap menjadi sumber rekap kelas, arah, dan lajur.
 - Detection tanpa ID boleh ditampilkan dengan label yang jelas, tetapi belum menambah count.
 
 ### 7.4 Kasus khusus
@@ -385,7 +402,7 @@ demo-001,main,12,150,5.0,motorcycle,A_TO_B
 
 **`annotated.mp4`:** video sumber dengan overlay, dimensi asli, dan FPS sumber. Audio tidak dipertahankan pada MVP; beri keterangan di UI/README. Video hasil menampilkan isi frame sumber, termasuk ketika inferensi memakai CLAHE.
 
-**`process_evidence.png`:** panel satu frame yang menampilkan sumber BGR, kanal L dari Lab, CLAHE pada L jika aktif, masukan aktual model, deteksi YOLO sebelum asosiasi, dan track ByteTrack beserta ID dan jejak. Frame crossing pertama diprioritaskan. Metadata `process_evidence` pada `run.json` mencatat frame, waktu, alasan pemilihan, status CLAHE, dan jumlah deteksi serta track. Kunci artefaknya juga `process_evidence`.
+**`process_evidence.png`:** panel satu frame yang menampilkan sumber BGR, tahapan prapemrosesan yang dipilih, deteksi YOLO sebelum asosiasi, dan hasil pelacakan beserta ID dan jejak. Gamma, Gaussian, unsharp, dan median menampilkan frame hasil beserta parameter aktif. CLAHE dan bilateral + CLAHE menampilkan kanal L sebelum dan sesudah CLAHE serta hasil BGR untuk deteksi. Jika ROI deteksi aktif, potongan yang masuk ke model ditampilkan sebagai masukan detektor. Frame crossing pertama diprioritaskan. Metadata `process_evidence` pada `run.json` mencatat frame, waktu, alasan pemilihan, status CLAHE, dan jumlah deteksi serta track. Kunci artefaknya juga `process_evidence`.
 
 **Keluaran tambahan:** `timeline.csv` berisi delapan kombinasi kelas–arah pada interval 5 detik, termasuk interval nol, seluruhnya diturunkan dari event otomatis. `diagnostics.json` mencatat observasi deteksi/track/sisi garis, jeda ID, dan petunjuk penanganan; petunjuk bukan bukti kausal atau daftar crossing yang pasti terlewat. `traffic.csv` hanya dibuat jika indikator macet aktif. `run.json` menambahkan `analysis_scope`, `analyzed_duration_seconds`, `diagnostics`, serta `traffic` dengan parameter dan ringkasan durasi. `CountEvent` beserta tujuh kolom CSV tetap sama.
 
@@ -424,6 +441,8 @@ Contoh pesan yang harus informatif: video tidak dapat dibaca, FPS tidak valid, g
 ### 13.2 Indikator macet awal
 
 `CongestionConfig` opsional, default tidak aktif. Area default `[0.05, 0.45, 0.95, 0.95]`; sesuaikan ke bagian jalan yang benar-benar dipantau detektor. Persyaratan awal: minimal 3 track, keterisian gabungan box minimal 15%, minimal 65% track dengan riwayat cukup bergerak tidak lebih dari 0.15 diagonal box/detik, dan kondisi bertahan 3 detik. Riwayat gerak memakai jendela 2 detik, minimal 1 detik serta 3 observasi; minimal separuh track saat ini harus memiliki riwayat cukup. Jeda observasi mengikuti `max_crossing_gap_seconds` run dan mereset riwayat. Sampel setiap 0.5 detik video, pemulihan status setelah 2 detik; data gerak tidak cukup langsung membatalkan indikasi macet.
+
+`dropout_grace_seconds` mengizinkan pengambilan sampel ulang ketika macet sudah terkonfirmasi dan bukti gerak pada sampel berikutnya belum cukup. Bawaan 0 detik, maksimal 0,5 detik. Profil kamera lokal memakai 0,20 detik. Selama menunggu, UI menampilkan sampel terakhir. Jika bukti tetap hilang setelah batas waktu, status turun ke sepi atau belum cukup data sesuai observasi saat itu. Status macet awal tetap memerlukan kepadatan dan gerak lambat yang teramati.
 
 Box hampir identik dengan IoU ≥ 0.85 disaring khusus statistik lalu lintas. Keterisian memakai gabungan area box pada raster 128×128 sehingga overlap tidak dijumlahkan dua kali. Counting tetap mengikuti modul domain dan event log. Status: belum cukup data, sepi, lancar, gerak lambat, padat, atau indikasi macet. Satu kendaraan berhenti tidak memenuhi ambang awal macet.
 
@@ -510,6 +529,8 @@ mAP memerlukan anotasi bounding box; IDF1/MOTA/HOTA memerlukan anotasi tracking 
 ### 15.4 Eksperimen asosiasi ByteTrack
 
 Profil `configs/bytetrack-no-fuse.yaml` menonaktifkan penggabungan confidence dengan biaya asosiasi. Baseline tetap memakai `bytetrack.yaml`. Bandingkan kedua profil dengan video, YOLO, prapemrosesan, dan garis yang sama. Laporkan crossing yang pulih serta event ekstra setelah mengecek identitas kendaraan di frame sumber. Catat kasus dengan titik acuan tertutup secara terpisah. Lihat [evaluasi eksperimen ByteTrack](docs/bytetrack-fuse-score-evaluation.md).
+
+Profil opsional `configs/bytetrack-dense.yaml` menaikkan `match_thresh` dari 0,80 ke 0,87 dengan `fuse_score: true`. Profil dapat memulihkan asosiasi motor di dekat garis dan berisiko menyambung deteksi kendaraan berbeda ketika saling menutupi. Gunakan pemeriksaan identitas dan kelas sebelum memilih profil untuk kamera lain.
 
 Profil lanjutan `configs/experiments/vehicles-3-refined.yaml` memakai ByteTrack dengan `fuse_score: true`, pemeriksaan kelas, dan penolakan crossing ganda berbasis tampilan. Gunakan profil ini untuk eksperimen antrean kamera diam dan uji dengan klip lain sebelum mengaktifkannya pada profil demo.
 
@@ -665,6 +686,12 @@ status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
 | 2026-11-15 | Penundaan pengguna | Pembuatan laporan/PDF ditunda; fokus fitur aplikasi dan pengujiannya |
 | 2026-11-15 | Penyempurnaan pengguna | Bandingkan YOLO11n/YOLO11s tanpa mengubah GT, garis, tracker, atau aturan crossing. YOLO11n tetap default setelah uji awal. Tambahkan riwayat run dan rentang indikasi macet; durasi status run baru mencakup sisa interval sampai akhir video |
 | 2026-11-16 | Perluasan pengguna | Tambahkan antrean/batal, zona per lajur, heatmap, kualitas video, dan label frame manual. Gunakan histogram/Laplacian/FFT/ORB serta filter tambahan yang diuji; pertahankan default model/prapemrosesan karena eksperimen belum menunjukkan peningkatan konsisten. Laporan PDF tetap ditunda |
+| 2026-11-19 | Instruksi pengguna dan tuning lokal | Perbaiki MPV pada rekaman sendiri dan bandingkan dengan run sebelumnya di laptop. Tambahkan ambang crop yang dapat diatur, pelonggaran khusus minivan, dan jejak keputusan CSV/video. Tuning inferensi dibedakan dari pelatihan ulang bobot; evaluasi akurasi menyeluruh tetap memerlukan GT seluruh kendaraan. |
+| 2026-11-19 | Pengamanan tuning detektor | Uji `agnostic_nms` YOLO26 menghilangkan satu motor nyata pada klip pengembangan lain. Profil lokal memakai filter setelah pemilihan kelas kendaraan untuk kotak mobil/bus/truk hampir identik, dengan motor tidak disaring; parameter global `agnostic_nms` tidak ditambahkan ke produk. |
+| 2026-11-19 | Instruksi kelas dan fine-tuning pengguna | MPV, SUV, angkot, dan van kecil termasuk `car`; bus besar termasuk `bus`. Latih kandidat YOLO26n lokal, pisahkan video sebelum memilih crop, catat asal label, dan uji bobot tanpa pemeriksa MobileNet agar dampak fine-tuning terpisah. Dataset awal kecil tanpa contoh bus; kandidat yang kalah dari pretrained tidak menjadi default. |
+| 2026-11-19 | Penghitungan arah dan indikator antrean | Gunakan YOLO26n pretrained dan pemeriksa MPV. Sediakan profil ByteTrack untuk kendaraan rapat sebagai eksperimen dan toleransi sampel gerak terputus pada antrean yang sudah terkonfirmasi. Uji hasil dengan posisi garis yang sama dan periksa perubahan per arah dari video. |
+| 2026-11-19 | Perbaikan crossing kendaraan rapat | Aktifkan konsensus kelas dari observasi dekat garis serta penyaringan duplikasi dari riwayat kotak bersama pada pilihan kendaraan rapat. Catat keputusannya terpisah dari event final. Gunakan bobot YOLO26n pretrained dan periksa A→B serta B→A pada rekaman lokal. |
+| 2026-11-22 | Bukti prapemrosesan di UI | Panel bukti menyesuaikan tahapan visual dengan mode yang dipilih dan memakai frame masukan detektor dari analisis yang sama. |
 
 Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 

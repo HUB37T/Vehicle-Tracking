@@ -115,6 +115,7 @@ class CongestionConfig:
     hold_seconds: float = 3.0
     recovery_seconds: float = 2.0
     sample_seconds: float = 0.5
+    dropout_grace_seconds: float = 0.0
 
     def __post_init__(self) -> None:
         if type(self.enabled) is not bool:
@@ -147,6 +148,9 @@ class CongestionConfig:
                 raise ValueError(f"{name} harus lebih besar dari nol.")
         if self.min_motion_seconds > self.motion_window_seconds:
             raise ValueError("min_motion_seconds melebihi motion_window_seconds.")
+        _finite(self.dropout_grace_seconds, "dropout_grace_seconds", 0)
+        if self.dropout_grace_seconds > 0.5:
+            raise ValueError("dropout_grace_seconds maksimal 0,5 detik.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,13 +178,17 @@ class RunConfig:
     device: str = "cpu"
     imgsz: int = 640
     detector_conf: float = 0.10
+    detector_deduplicate_classes: bool = False
     vehicle_classes: tuple[str, ...] = VEHICLE_CLASSES
     preprocess: PreprocessConfig = field(default_factory=PreprocessConfig)
     counting_line: CountingLineConfig = field(default_factory=CountingLineConfig)
     min_track_hits: int = 3
     max_crossing_gap_seconds: float = 0.5
     deduplicate_crossings: bool = False
+    guard_dense_crossings: bool = False
     truck_review_weights: str | None = None
+    truck_review_light_threshold: float = 0.40
+    truck_review_minivan_only: bool = False
     detection_roi: BBox | None = None
     congestion: CongestionConfig = field(default_factory=CongestionConfig)
     traffic_zones: tuple[TrafficZoneConfig, ...] = ()
@@ -192,8 +200,17 @@ class RunConfig:
             _nonempty(getattr(self, name), name)
         if type(self.deduplicate_crossings) is not bool:
             raise ValueError("deduplicate_crossings harus boolean.")
+        if type(self.guard_dense_crossings) is not bool:
+            raise ValueError("guard_dense_crossings harus boolean.")
+        if type(self.detector_deduplicate_classes) is not bool:
+            raise ValueError("detector_deduplicate_classes harus boolean.")
         if self.truck_review_weights is not None:
             _nonempty(self.truck_review_weights, "truck_review_weights")
+        _finite(self.truck_review_light_threshold, "truck_review_light_threshold", 0)
+        if not 0 < self.truck_review_light_threshold <= 1:
+            raise ValueError("truck_review_light_threshold harus lebih dari 0 dan <= 1.")
+        if type(self.truck_review_minivan_only) is not bool:
+            raise ValueError("truck_review_minivan_only harus boolean.")
         if self.detection_roi is not None:
             roi = tuple(self.detection_roi)
             if len(roi) != 4:

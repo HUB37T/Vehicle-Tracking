@@ -42,6 +42,8 @@ Verifikasi checksum klip sebelum memakai CSV yang ada. Encoder atau versi FFmpeg
 
 ## Uji lanjutan dengan `fuse_score: true`
 
+Catatan versi 19 November: uraian/angka di bawah berasal dari eksperimen terdahulu. Video yang dianalisis ulang dengan renderer terbaru menandai koreksi kelas sebagai `car (review)` sejak crossing dan mengekspor `truck_review.csv`; video lama tidak diubah. Profil lama tetap memakai ambang 0,40 dan kelompok kendaraan ringan. Profil khusus MPV lokal dijelaskan pada [README](../README.md#pemeriksaan-mpv-yang-terbaca-truk).
+
 Profil [vehicles-3-refined.yaml](../configs/experiments/vehicles-3-refined.yaml) memakai video, YOLO11n, CLAHE, garis, dan setelan ByteTrack baseline. Kandidat crossing berkelas `truck` diperiksa dengan crop frame sumber. MobileNetV3-Large perlu menempatkan salah satu label kendaraan ringan di posisi teratas dan memberi jumlah probabilitas kelompok minimal 0,40 sebelum kelas event diubah ke `car`. Kotak dan label deteksi pada video tetap memperlihatkan keluaran detektor, sementara rekap dan CSV mengikuti kelas final event. [Dokumentasi model Torchvision](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.mobilenet_v3_large.html)
 
 Kandidat crossing dengan ID baru dibandingkan dengan event searah dalam 15 detik terakhir. Kandidat dibuang jika kotaknya beririsan dengan IoU minimal 0,65 dan korelasi dua arah dari bagian atas kotak minimal 0,80. Kotak yang kurang bertekstur dilewati. Riwayat pembanding dihapus lebih awal jika kendaraan lama terlihat meninggalkan garis sejauh bentang kotaknya pada arah tegak lurus garis. Aturan ini ditujukan untuk antrean kamera diam. Kendaraan yang tampil serupa dan saling berdekatan masih perlu diuji pada lebih banyak klip.
