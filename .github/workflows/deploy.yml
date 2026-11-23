@@ -163,6 +163,7 @@ jobs:
           ssh_opts=(
             -i "${key_file}"
             -p "${ssh_port}"
+            -o IdentitiesOnly=yes
             -o BatchMode=yes
             -o ConnectTimeout=20
             -o ServerAliveInterval=15
@@ -180,10 +181,10 @@ jobs:
           ssh "${ssh_opts[@]}" "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" \
             bash -s -- "${DEPLOY_APP_DIR}" "${TARGET_SHA}" "${BUILD_MODE}" "${RUNTIME_IMAGE}" <<'REMOTE'
           set -Eeuo pipefail
-          app_dir="$1"
-          target_sha="$2"
-          build_mode="$3"
-          runtime_image="$4"
+          app_dir="${1:?missing app_dir}"
+          target_sha="${2:?missing target_sha}"
+          build_mode="${3:-auto}"
+          runtime_image="${4:-}"
 
           cd "${app_dir}"
           git fetch --prune origin
