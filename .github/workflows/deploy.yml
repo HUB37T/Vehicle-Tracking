@@ -1,0 +1,211 @@
+name: Deploy to cp-bcc
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "deploy/README.md"
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Docker build mode on cp-bcc VM (auto reuses active runtime image)"
+        type: choice
+        default: auto
+        options:
+          - auto
+          - update
+          - full
+      runtime_image:
+        description: "Optional base image tag for update mode (blank = auto-detect)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cp-bcc
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Pre-deploy verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+
+      - name: Install OpenCV system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,vision,ui]" imageio-ffmpeg -c constraints.txt
+          python -m pip check
+
+      - name: Run lint, format, test, and deploy script check
+        run: |
+          ruff check .
+          ruff format --check .
+          pytest -q
+          bash -n deploy/deploy.sh
+          shellcheck deploy/deploy.sh
+          bash deploy/deploy.sh --help >/dev/null
+          bash deploy/deploy.sh --dry-run
+
+      - name: Verify Docker build allowlist includes UI and configs
+        run: |
+          python3 - <<'PY'
+          import fnmatch
+          from pathlib import Path
+
+          rules = [
+              line.strip()
+              for line in Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+              if line.strip() and not line.strip().startswith("#")
+          ]
+
+          def is_included(rel_path: str) -> bool:
+              ignored = False
+              for rule in rules:
+                  negated = rule.startswith("!")
+                  pattern = rule[1:] if negated else rule
+                  matched = (
+                      pattern == "**"
+                      or fnmatch.fnmatch(rel_path, pattern)
+                      or rel_path == pattern
+                  )
+                  if matched:
+                      ignored = not negated
+              return not ignored
+
+          required = [
+              "app.py",
+              "README.md",
+              "pyproject.toml",
+              "constraints.txt",
+              "requirements-ui.txt",
+              ".streamlit/config.toml",
+              "configs/default.yaml",
+              "configs/deepsort.yaml",
+              "configs/bytetrack-dense.yaml",
+              "configs/bytetrack-no-fuse.yaml",
+              "src/vehicle_counter/cli.py",
+              "src/vehicle_counter/ui/layout.py",
+              "src/vehicle_counter/ui/editor/index.html",
+              "src/vehicle_counter/ui/editor/shapes/index.html",
+              "deploy/Dockerfile",
+              "deploy/Dockerfile.update",
+          ]
+          missing = [p for p in required if not Path(p).is_file() or not is_included(p)]
+          assert not missing, f"Missing or ignored by .dockerignore: {missing}"
+          print(f"Verified {len(required)} required Docker build files.")
+          PY
+
+  deploy:
+    name: Deploy container to cp-bcc
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate deployment secrets
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
+        run: |
+          missing=()
+          [[ -n "${DEPLOY_SSH_HOST}" ]] || missing+=("DEPLOY_SSH_HOST")
+          [[ -n "${DEPLOY_SSH_USER}" ]] || missing+=("DEPLOY_SSH_USER")
+          [[ -n "${DEPLOY_SSH_KEY}" ]] || missing+=("DEPLOY_SSH_KEY")
+          [[ -n "${DEPLOY_APP_DIR}" ]] || missing+=("DEPLOY_APP_DIR")
+          if ((${#missing[@]} > 0)); then
+            echo "Missing required GitHub Secrets: ${missing[*]}" >&2
+            echo "Configure them in Repository Settings -> Secrets and variables -> Actions (see deploy/README.md)." >&2
+            exit 1
+          fi
+
+      - name: Roll out on cp-bcc via SSH
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_APP_DIR: ${{ secrets.DEPLOY_APP_DIR }}
+          BUILD_MODE: ${{ inputs.build_mode || 'auto' }}
+          RUNTIME_IMAGE: ${{ inputs.runtime_image || '' }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          ssh_dir="$(mktemp -d "${RUNNER_TEMP}/deploy-ssh.XXXXXX")"
+          trap 'rm -rf -- "${ssh_dir}"' EXIT
+
+          key_file="${ssh_dir}/id_deploy"
+          (umask 077 && printf '%s\n' "${DEPLOY_SSH_KEY}" > "${key_file}")
+
+          ssh_port="${DEPLOY_SSH_PORT:-22}"
+          ssh_opts=(
+            -i "${key_file}"
+            -p "${ssh_port}"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+          )
+
+          if [[ -n "${DEPLOY_SSH_KNOWN_HOSTS}" ]]; then
+            known_hosts_file="${ssh_dir}/known_hosts"
+            (umask 077 && printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > "${known_hosts_file}")
+            ssh_opts+=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${known_hosts_file}")
+          else
+            ssh_opts+=(-o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=${ssh_dir}/known_hosts")
+          fi
+
+          ssh "${ssh_opts[@]}" "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" \
+            bash -s -- "${DEPLOY_APP_DIR}" "${TARGET_SHA}" "${BUILD_MODE}" "${RUNTIME_IMAGE}" <<'REMOTE'
+          set -Eeuo pipefail
+          app_dir="$1"
+          target_sha="$2"
+          build_mode="$3"
+          runtime_image="$4"
+
+          cd "${app_dir}"
+          git fetch --prune origin
+          git checkout -f -B main "${target_sha}"
+
+          APP_DIR="${app_dir}" \
+          BUILD_MODE="${build_mode}" \
+          RUNTIME_IMAGE="${runtime_image}" \
+          SOURCE_COMMIT="${target_sha}" \
+          bash deploy/deploy.sh
+          REMOTE
+
+      - name: Verify public HTTPS health endpoint
+        run: |
+          set -Eeuo pipefail
+          url="https://pred-autoscaler.bccdev.id/vehicle-tracking/demo/_stcore/health"
+          for attempt in 1 2 3 4 5; do
+            if body="$(curl --fail --silent --show-error --max-time 15 "${url}")"; then
+              echo "Public health check succeeded (attempt ${attempt}): ${body}"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Public health check failed for ${url}" >&2
+          exit 1

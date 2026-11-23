@@ -45,6 +45,27 @@ docker build -f deploy/Dockerfile.update \
 
 Pembaruan ini menyalin kode/config/UI dan memasang DeepSORT tanpa mengganti NumPy/OpenCV/PyTorch kompatibel yang telah diuji. Untuk host baru, gunakan Dockerfile utama. Pertahankan batas sumber daya, mount, dan rute dari perintah kontainer di atas; pembaruan Vehicle Tracking tidak memerlukan perubahan konfigurasi atau restart layanan WasteNot.
 
+## Otomasi CI/CD (GitHub Actions ke VM cp-bcc)
+
+Repositori menyediakan dua workflow GitHub Actions dan satu skrip deploy defensif:
+
+- [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): berjalan pada setiap `push` dan `pull_request` ke `main` untuk menjalankan `ruff check` dan `pytest`.
+- [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml): berjalan otomatis saat ada `push` kode ke `main` (mengabaikan `docs/**` dan `deploy/README.md`) atau manual lewat `workflow_dispatch`. Workflow ini menjalankan verifikasi `ruff`, `pytest`, `shellcheck`, validasi allowlist `.dockerignore`, lalu terhubung lewat SSH ke VM `cp-bcc`, menyinkronkan checkout Git ke commit teruji, menjalankan `deploy/deploy.sh`, dan memverifikasi endpoint HTTPS publik `/vehicle-tracking/demo/_stcore/health`.
+- [`deploy/deploy.sh`](deploy.sh): membangun image baru (otomatis memakai `Dockerfile.update` berbasis image kontainer aktif jika tersedia, atau `Dockerfile` jika belum ada / `BUILD_MODE=full`), menjalankan uji kandidat di `127.0.0.1:18502` (healthcheck, halaman awal, serta keberadaan aset `src/vehicle_counter/ui/editor/`), lalu mengganti `vehicle-tracking-demo` di `127.0.0.1:18501` dengan rollback otomatis ke kontainer cadangan bila startup gagal. Skrip ini tidak mengubah konfigurasi Nginx atau layanan lain di VM.
+
+Konfigurasikan GitHub Repository Secrets berikut pada **Settings > Secrets and variables > Actions** sebelum mengaktifkan deploy otomatis:
+
+| Secret | Wajib | Keterangan |
+|---|---|---|
+| `DEPLOY_SSH_HOST` | Ya | Alamat IP atau hostname VM `cp-bcc`. |
+| `DEPLOY_SSH_USER` | Ya | Username SSH pada VM yang memiliki akses Docker dan direktori repo. |
+| `DEPLOY_SSH_KEY` | Ya | Private key SSH khusus deploy (format OpenSSH/PEM). |
+| `DEPLOY_APP_DIR` | Ya | Path absolut checkout repositori pada VM (berisi `models/`, `data/videos/`, dan `outputs/`). |
+| `DEPLOY_SSH_PORT` | Opsional | Port SSH VM (default `22`). |
+| `DEPLOY_SSH_KNOWN_HOSTS` | Opsional | Baris `ssh-keyscan` host VM untuk `StrictHostKeyChecking=yes` (jika kosong memakai `accept-new`). |
+
+Untuk pengujian lokal tanpa mengubah kontainer, jalankan `bash deploy/deploy.sh --dry-run`.
+
 ## Deployment antrean dan heatmap 16 November 2026
 
 Demo publik menggunakan image `vehicle-tracking:queue-90b9fc6565de` (ID diawali `0547600379b5`). Snapshot berasal dari workspace lokal. Arsip dan checksum sumber tersimpan di `/home/dev/vehicle-tracking-releases/queue-90b9fc6565de/`. Kontainer sebelumnya disimpan dengan nama `vehicle-tracking-backup-queue-90b9fc6565de`.

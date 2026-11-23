@@ -5,9 +5,7 @@
 !constraints.txt
 !requirements-ui.txt
 !configs
-!configs/default.yaml
-!configs/deepsort.yaml
-!configs/bytetrack-no-fuse.yaml
+!configs/*.yaml
 !configs/experiments
 !configs/experiments/*.yaml
 !.streamlit
@@ -15,10 +13,12 @@
 !src
 !src/vehicle_counter
 !src/vehicle_counter/*.py
-!src/vehicle_counter/editor
-!src/vehicle_counter/editor/*.html
-!src/vehicle_counter/editor/shapes
-!src/vehicle_counter/editor/shapes/*.html
+!src/vehicle_counter/ui
+!src/vehicle_counter/ui/*.py
+!src/vehicle_counter/ui/editor
+!src/vehicle_counter/ui/editor/*.html
+!src/vehicle_counter/ui/editor/shapes
+!src/vehicle_counter/ui/editor/shapes/*.html
 !deploy
 !deploy/Dockerfile
 !deploy/Dockerfile.update
