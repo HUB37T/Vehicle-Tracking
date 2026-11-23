@@ -8,8 +8,8 @@ import pandas as pd
 import streamlit as st
 
 from vehicle_counter.contracts import TrafficZoneConfig
-from vehicle_counter.shape_editor import decode_polygon, render_shapes
 from vehicle_counter.traffic import TRAFFIC_LABELS
+from vehicle_counter.ui.shape_editor import decode_polygon, render_shapes
 
 
 def configure_zones(image, config, key):

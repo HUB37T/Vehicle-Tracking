@@ -15,14 +15,6 @@ import cv2
 import pandas as pd
 import streamlit as st
 
-from vehicle_counter.analytics_dashboard import (
-    configure_zones,
-    show_heatmap,
-    show_image_analytics,
-    show_quality,
-    show_traffic_zones,
-)
-from vehicle_counter.camera_preset_dashboard import show_camera_presets
 from vehicle_counter.config import load_config
 from vehicle_counter.contracts import (
     DIRECTIONS,
@@ -31,22 +23,30 @@ from vehicle_counter.contracts import (
     CountSummary,
     RunResult,
 )
-from vehicle_counter.dashboard import (
+from vehicle_counter.geometry import PixelCountingLine
+from vehicle_counter.history import list_runs, load_run
+from vehicle_counter.jobs import ACTIVE, JobQueue
+from vehicle_counter.quality import inspect_quality
+from vehicle_counter.tracking import load_tracker_settings
+from vehicle_counter.ui.analytics import (
+    configure_zones,
+    show_heatmap,
+    show_image_analytics,
+    show_quality,
+    show_traffic_zones,
+)
+from vehicle_counter.ui.camera_presets import show_camera_presets
+from vehicle_counter.ui.dashboard import (
     show_comparison,
     show_diagnostics,
     show_review_form,
     show_timeline,
     show_traffic,
 )
-from vehicle_counter.dataset_dashboard import show_dataset_labels
-from vehicle_counter.geometry import PixelCountingLine
-from vehicle_counter.history import list_runs, load_run
-from vehicle_counter.job_dashboard import show_jobs
-from vehicle_counter.jobs import ACTIVE, JobQueue
-from vehicle_counter.line_editor import decode_editor, render_editor
-from vehicle_counter.quality import inspect_quality
-from vehicle_counter.tracking import load_tracker_settings
-from vehicle_counter.ui_layout import QUEUE, RESULTS, SETUP, open_view, show_header, workspace_tabs
+from vehicle_counter.ui.dataset import show_dataset_labels
+from vehicle_counter.ui.jobs import show_jobs
+from vehicle_counter.ui.layout import QUEUE, RESULTS, SETUP, open_view, show_header, workspace_tabs
+from vehicle_counter.ui.line_editor import decode_editor, render_editor
 from vehicle_counter.video import VideoReader
 
 ROOT = Path(__file__).resolve().parent

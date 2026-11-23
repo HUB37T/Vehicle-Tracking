@@ -6,7 +6,7 @@ import streamlit as st
 
 from vehicle_counter.contracts import CountSummary, RunResult
 from vehicle_counter.jobs import ACTIVE, JobQueue
-from vehicle_counter.ui_layout import QUEUE, RESULTS, WORKSPACE_KEY, open_view
+from vehicle_counter.ui.layout import QUEUE, RESULTS, WORKSPACE_KEY, open_view
 
 LABELS = {
     "preparing": "Menyalin video",

@@ -31,7 +31,7 @@ vehicle-counter = "vehicle_counter.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-vehicle_counter = ["editor/*.html", "editor/shapes/*.html"]
+"vehicle_counter.ui" = ["editor/*.html", "editor/shapes/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

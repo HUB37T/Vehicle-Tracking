@@ -7,13 +7,13 @@ import cv2
 import streamlit as st
 
 from vehicle_counter.exporting import file_sha256
-from vehicle_counter.shape_editor import render_shapes
 from vehicle_counter.training_labels import (
     export_dataset,
     latest_labels,
     save_labels,
     validate_boxes,
 )
+from vehicle_counter.ui.shape_editor import render_shapes
 
 
 @st.cache_data(max_entries=8, show_spinner=False)

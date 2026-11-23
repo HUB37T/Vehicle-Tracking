@@ -415,8 +415,8 @@ def test_model_controls_and_comparison_keep_camera_settings(
 def test_zones_heatmap_quality_and_manual_dataset_in_ui(dashboard_project, monkeypatch):
     from streamlit.testing.v1 import AppTest
 
-    from vehicle_counter import dataset_dashboard
     from vehicle_counter.training_labels import latest_labels
+    from vehicle_counter.ui import dataset as dataset_dashboard
 
     root, video = dashboard_project
     app = AppTest.from_file(str(root / "app.py"), default_timeout=25).run()

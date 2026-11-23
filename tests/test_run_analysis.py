@@ -4,8 +4,8 @@ import pytest
 
 from vehicle_counter.contracts import CountEvent, CountingLineConfig, TrackObservation
 from vehicle_counter.geometry import PixelCountingLine
-from vehicle_counter.line_editor import decode_editor
 from vehicle_counter.run_analysis import CrossingDiagnostics, timeline_rows
+from vehicle_counter.ui.line_editor import decode_editor
 
 
 def test_timeline_keeps_zero_intervals_and_exact_boundary_events():
