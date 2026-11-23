@@ -1,20 +1,12 @@
-# CONTEXT — Penghitung Kendaraan dari Video
+# Rancangan teknis TRAQ
 
-Versi dokumen: 0.7 | Dibuat: 6 November 2026 | Diperbarui: 19 November 2026 | Bahasa antarmuka dan dokumentasi: Indonesia.
+TRAQ adalah proyek Pengolahan Citra Digital dan Visi Komputer untuk menghitung kendaraan dan memantau kondisi lalu lintas dari video. Dokumen ini memuat aturan penghitungan, arsitektur, format keluaran, dan skenario evaluasi. Petunjuk instalasi dan penggunaan ada di [README](../README.md).
 
-Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent yang membantu pengerjaan. Baca sebelum merancang, menulis kode, menguji, atau mengubah lingkup proyek. Isinya mencakup tujuan, istilah, spesifikasi perilaku, rancangan teknis awal, pembagian pekerjaan, dan kriteria selesai agar hasil dari agent yang berbeda dapat digabungkan.
-
-## 1. Status dan cara menggunakan dokumen
-
-**Yang sudah dipilih pengguna:** proyek akhir mata kuliah Pengolahan Citra Digital dan Visi Komputer dengan topik penghitung kendaraan. Proyek dikerjakan bersama teman dengan bantuan AI agent masing-masing.
-
-**Usulan awal dokumen ini:** video unggahan, aplikasi lokal berbasis Python dan Streamlit, deteksi YOLO11n, tracking ByteTrack, satu garis penghitung dua arah, empat kelas kendaraan, serta eksperimen CLAHE. Pilihan ini menjadi baseline kerja bersama sampai pemilik proyek menggantinya; pilihan tersebut belum merupakan persyaratan resmi dosen.
-
-**Status implementasi saat dokumen dibuat:** folder kerja belum berisi implementasi aplikasi. Struktur direktori, kontrak modul, parameter, dan target di bawah adalah rancangan, bukan laporan fitur yang sudah tersedia atau hasil pengujian.
+## 1. Status proyek
 
 **Status terbaru:** pipeline video, panel bukti, antarmuka Streamlit, dan evaluator crossing tersedia. Lingkungan yang diuji adalah Python 3.12 di Windows dengan CPU PyTorch. Hasil awal dua klip jalan dicatat di `docs/counting-evaluation.md`. Profil ByteTrack `fuse_score: false` tersedia untuk eksperimen pada klip terpisah. Peninjau kedua serta evaluasi akhir dengan cakupan kelas dan kondisi yang lebih beragam masih diperlukan.
 
-**Perluasan 15 November 2026:** editor garis/area dengan drag, uji singkat, diagnostik hitungan, perbandingan metode, catatan pemeriksaan manual, grafik waktu, dan indikator macet tersedia. ByteTrack `fuse_score: true` tetap pilihan utama. Pembuatan laporan PDF ditunda atas instruksi pengguna; dokumentasi penggunaan tetap diperbarui.
+**Perluasan 15 November 2026:** editor garis/area dengan drag, uji singkat, diagnostik hitungan, perbandingan metode, catatan pemeriksaan manual, grafik waktu, dan indikator macet tersedia. ByteTrack `fuse_score: true` tetap pilihan utama.
 
 **Penyempurnaan berikutnya:** pilihan bobot YOLO11n/YOLO11s, kontrol ukuran/confidence, perbandingan model dengan parameter lain tetap, riwayat run, dan rentang waktu indikasi macet tersedia. YOLO11n tetap bawaan setelah uji dua klip; YOLO11s belum unggul konsisten. Kedua model memakai pretrained resmi, belum fine-tuning.
 
@@ -22,17 +14,7 @@ Dokumen ini adalah acuan bersama pemilik proyek, rekan satu tim, dan AI agent ya
 
 **Perluasan 19 November 2026:** YOLO26n pretrained tersedia sebagai pilihan model. Rekaman sendiri diuji lokal dalam versi constant frame rate. Profil khusus MPV menambahkan pemeriksaan crop dengan ambang yang dapat diatur dan pilihan fokus minivan; setiap koreksi dicatat dan ditandai pada video setelah crossing. Ini tuning inferensi, belum pelatihan ulang bobot YOLO.
 
-**Eksperimen fine-tuning 19 November 2026:** dua kandidat YOLO26n sudah dilatih pada GPU RTX 4070 laptop. Dataset awal terdiri dari 17 crop area jalan untuk training, 5 validasi, dan 6 uji dari video sumber terpisah. Label berasal dari proposal detektor yang diperiksa/dikoreksi visual oleh AI agent, belum ditinjau independen oleh manusia. Kandidat awal belum mengungguli pretrained pada data uji kecil dan tidak mengganti model utama. Bobot eksperimen serta metadata disimpan lokal; bus besar belum memiliki contoh pada dataset awal.
-
-Sebelum mengerjakan suatu tugas, agent harus:
-
-1. Membaca dokumen ini dan memeriksa kode, instruksi repositori, serta perubahan lokal yang sudah ada.
-2. Menyebutkan bagian yang akan dikerjakan dan berkas yang menjadi tanggung jawabnya.
-3. Mengikuti istilah serta kontrak data di sini. Jika kode menyimpang, jelaskan perbedaannya sebelum memperluas perubahan.
-4. Mengerjakan tugas yang diberikan beserta pemeriksaan yang relevan; laporkan hasil aktual dan batasannya.
-5. Memperbarui bagian dokumen yang terdampak jika ada perubahan rancangan bersama. Catat keputusan di bagian 21.
-
-Instruksi terbaru dari pemilik proyek mengungguli dokumen ini. Keputusan kecil di dalam modul boleh dibuat agent; perubahan lingkup, makna hitungan, model/tracker, kontrak bersama, dan ukuran keberhasilan perlu diselaraskan dengan tim terlebih dahulu. Fakta yang belum diketahui tetap ditulis sebagai asumsi atau hal yang perlu dikonfirmasi.
+**Eksperimen fine-tuning 19 November 2026:** dua kandidat YOLO26n sudah dilatih pada GPU RTX 4070 laptop. Dataset awal terdiri dari 17 crop area jalan untuk training, 5 validasi, dan 6 uji dari video sumber terpisah. Label berasal dari proposal detektor yang diperiksa dan dikoreksi dengan bantuan AI, lalu masih memerlukan tinjauan independen oleh manusia. Kandidat awal belum mengungguli pretrained pada data uji kecil dan tidak mengganti model utama. Bobot eksperimen serta metadata disimpan lokal; bus besar belum memiliki contoh pada dataset awal.
 
 ## 2. Identitas dan tujuan proyek
 
@@ -79,7 +61,7 @@ Kontribusi tim berada pada integrasi pipeline, aturan crossing, antarmuka, ekspe
 | Heatmap keberadaan | Akumulasi waktu observasi anchor kendaraan pada lokasi citra; warna menunjukkan keberadaan teramati, bukan bukti macet atau jumlah kendaraan fisik unik. |
 | Pemeriksaan kualitas | Pengukuran awal pencahayaan, ketajaman, dan gerak latar video untuk memberi petunjuk sebelum analisis, bukan skor akurasi model. |
 | Label pelatihan manual | Kotak kendaraan dan kelas yang diberikan pemeriksa pada frame sumber untuk calon dataset fine-tuning; berbeda dari catatan crossing dan prediksi model. |
-| Label awal tinjauan agent | Proposal kotak detektor yang diperiksa/dikoreksi melalui gambar oleh AI agent; asal label dinyatakan eksplisit dan belum sama dengan tinjauan manusia independen. |
+| Label awal berbantuan AI | Proposal kotak detektor yang diperiksa dan dikoreksi dengan bantuan AI. Label ini masih memerlukan tinjauan independen oleh manusia. |
 | Koreksi kelas crop | Pemeriksaan kedua pada potongan kendaraan ketika kandidat crossing berkelas truk; keputusan otomatis dapat mengubah kelas final event menjadi mobil. |
 | Filter kotak ganda antarkelas | Pemilihan satu kotak kendaraan berskor lebih tinggi ketika kotak mobil/bus/truk dengan kelas berbeda hampir identik pada frame yang sama; diterapkan sebelum tracking. |
 | Tuning parameter inferensi | Pemilihan model, ukuran masukan, prapemrosesan, dan ambang memakai video pengembangan; bobot pretrained tidak berubah. |
@@ -159,7 +141,7 @@ Pengenalan pelat, identifikasi pemilik kendaraan, pelacakan lintas kamera, detek
 | 16. Tracking objek modern | ByteTrack sebagai pilihan utama dan DeepSORT sebagai eksperimen opsional | ID dan lintasan antarframe; analisis ID switch dan perbandingan tracker |
 | 17–18. Deteksi deep learning dan YOLO | Detektor pretrained untuk jenis kendaraan | Box, kelas, confidence, serta penjelasan inferensi |
 
-ByteTrack dan DeepSORT adalah dua metode berbeda. Atas izin pengguna pada 8 November 2026, DeepSORT tersedia sebagai eksperimen dengan fitur tampilan MobileNetV2 pretrained ImageNet, belum dilatih khusus identitas kendaraan. ByteTrack `fuse_score: true` tetap pilihan utama; parameter itu tidak berlaku untuk DeepSORT. Hasil eksperimen mengikuti [laporan perbandingan tracker](docs/tracker-safety-evaluation.md).
+ByteTrack dan DeepSORT adalah dua metode berbeda. Sejak 8 November 2026, DeepSORT tersedia sebagai eksperimen dengan fitur tampilan MobileNetV2 pretrained ImageNet, belum dilatih khusus identitas kendaraan. ByteTrack `fuse_score: true` tetap pilihan utama; parameter itu tidak berlaku untuk DeepSORT. Hasil eksperimen mengikuti [laporan perbandingan tracker](tracker-safety-evaluation.md).
 
 `pcd-lab` membuat panel dari frame N−1 dan N. Selisih intensitas menunjukkan area perubahan, dan CCL menghasilkan kandidat area gerak yang dapat terpecah atau tergabung. Optical Flow memperkirakan perpindahan titik citra. `analyze` tetap memakai deteksi YOLO dan asosiasi ByteTrack sebagai sumber event crossing.
 
@@ -307,8 +289,6 @@ Struktur berikut adalah usulan untuk dibuat bertahap sesuai tugas:
 
 ```text
 project/
-├── CONTEXT.md
-├── AGENTS.md
 ├── README.md
 ├── LICENSE
 ├── .gitignore
@@ -338,7 +318,8 @@ project/
 ├── data/annotations/
 ├── models/
 ├── outputs/
-└── docs/experiments/
+└── docs/
+    └── project-design.md
 ```
 
 Struktur ini mencakup rencana akhir; berkas yang benar-benar tersedia dirangkum di README. Definisi dependensi berada di `pyproject.toml`; `requirements.txt` memanggil instalasi editable dengan ekstra tahap fondasi, dan `constraints.txt` merekam versi dependensi yang diuji.
@@ -347,7 +328,7 @@ Struktur ini mencakup rencana akhir; berkas yang benar-benar tersedia dirangkum 
 
 Video besar, bobot model, lingkungan virtual, dan hasil run tidak masuk version control secara default. Simpan cara mendapatkan data/bobot dan metadata yang diperlukan untuk mengulang percobaan.
 
-## 11. Kontrak data untuk integrasi antaragent
+## 11. Kontrak data antarmodul
 
 Nama field berikut menjadi acuan implementasi `contracts.py`; gunakan tipe data terstruktur seperti dataclass. Perubahan field harus diselaraskan sebelum kedua bagian digabungkan.
 
@@ -528,13 +509,13 @@ mAP memerlukan anotasi bounding box; IDF1/MOTA/HOTA memerlukan anotasi tracking 
 
 ### 15.4 Eksperimen asosiasi ByteTrack
 
-Profil `configs/bytetrack-no-fuse.yaml` menonaktifkan penggabungan confidence dengan biaya asosiasi. Baseline tetap memakai `bytetrack.yaml`. Bandingkan kedua profil dengan video, YOLO, prapemrosesan, dan garis yang sama. Laporkan crossing yang pulih serta event ekstra setelah mengecek identitas kendaraan di frame sumber. Catat kasus dengan titik acuan tertutup secara terpisah. Lihat [evaluasi eksperimen ByteTrack](docs/bytetrack-fuse-score-evaluation.md).
+Profil `configs/bytetrack-no-fuse.yaml` menonaktifkan penggabungan confidence dengan biaya asosiasi. Baseline tetap memakai `bytetrack.yaml`. Bandingkan kedua profil dengan video, YOLO, prapemrosesan, dan garis yang sama. Laporkan crossing yang pulih serta event ekstra setelah mengecek identitas kendaraan di frame sumber. Catat kasus dengan titik acuan tertutup secara terpisah. Lihat [evaluasi eksperimen ByteTrack](bytetrack-fuse-score-evaluation.md).
 
 Profil opsional `configs/bytetrack-dense.yaml` menaikkan `match_thresh` dari 0,80 ke 0,87 dengan `fuse_score: true`. Profil dapat memulihkan asosiasi motor di dekat garis dan berisiko menyambung deteksi kendaraan berbeda ketika saling menutupi. Gunakan pemeriksaan identitas dan kelas sebelum memilih profil untuk kamera lain.
 
 Profil lanjutan `configs/experiments/vehicles-3-refined.yaml` memakai ByteTrack dengan `fuse_score: true`, pemeriksaan kelas, dan penolakan crossing ganda berbasis tampilan. Gunakan profil ini untuk eksperimen antrean kamera diam dan uji dengan klip lain sebelum mengaktifkannya pada profil demo.
 
-Eksperimen deteksi pada klip antrean dapat memilih `detection_roi` sebagai `[x1, y1, x2, y2]` ternormalisasi. Potongan harus memuat seluruh segmen garis dan memberi ruang observasi di kedua sisi. Setelah deteksi, semua kotak dikembalikan ke koordinat frame sumber sebelum asosiasi dan counting. Profil hujan menguji kenaikan `imgsz` dengan detektor frame penuh. Kedua profil memakai pengaturan ByteTrack yang sama. Lihat [audit pemulihan deteksi dan ID](docs/bytetrack-holdout-evaluation.md#uji-pemulihan-deteksi-dan-id).
+Eksperimen deteksi pada klip antrean dapat memilih `detection_roi` sebagai `[x1, y1, x2, y2]` ternormalisasi. Potongan harus memuat seluruh segmen garis dan memberi ruang observasi di kedua sisi. Setelah deteksi, semua kotak dikembalikan ke koordinat frame sumber sebelum asosiasi dan counting. Profil hujan menguji kenaikan `imgsz` dengan detektor frame penuh. Kedua profil memakai pengaturan ByteTrack yang sama. Lihat [audit pemulihan deteksi dan ID](bytetrack-holdout-evaluation.md#uji-pemulihan-deteksi-dan-id).
 
 ## 16. Pengujian dan kriteria selesai
 
@@ -568,22 +549,7 @@ Integrasi minimal diuji pada satu video pendek nyata: inferensi/tracking berjala
 
 **Target kualitas awal, belum hasil:** usahakan `E_count <= 10%` dan F1 event setidaknya 0,90 pada klip uji kondisi utama yang memenuhi asumsi. Target ini harus ditinjau setelah uji awal dan disesuaikan dengan rubrik dosen; hasil aktual tetap dilaporkan walaupun target tidak tercapai. Kategori kendaraan yang belum muncul pada data uji dinyatakan belum teruji.
 
-## 17. Pembagian kerja untuk dua anggota dan dua agent
-
-| Area | Anggota/Agent A | Anggota/Agent B |
-| --- | --- | --- |
-| Fokus utama | Pipeline CV dan aturan counting | Antarmuka, keluaran, dan evaluasi |
-| Berkas utama | `config.py`, `preprocessing.py`, `tracking.py`, `geometry.py`, `counting.py`, `pipeline.py` | `app.py`, `visualization.py`, `exporting.py`, `evaluation.py` |
-| Pengujian | Geometri, state, adapter, smoke test pipeline | Ekspor, agregasi tampilan, evaluator, alur UI |
-| Keluaran | Pipeline nyata yang menghasilkan event sesuai kontrak | UI tersambung ke pipeline, unduhan, tabel evaluasi |
-
-Berkas bersama: `CONTEXT.md`, `contracts.py`, `configs/default.yaml`, `requirements.txt`, dan `README.md`. Tentukan satu penanggung jawab pada setiap perubahan berkas bersama. Agent A mengoordinasikan bentuk kontrak awal; Agent B meninjau kebutuhan UI/ekspor sebelum integrasi. Pembagian ini saran dan boleh ditukar oleh tim.
-
-Agent B dapat memakai fixture sesuai kontrak lalu menyambungkan pipeline nyata. Fixture diberi label data contoh; demo akhir memakai video nyata. Preview dan ringkasan masuk melalui `on_progress` sesuai kontrak bagian 11. Pada tahap integrasi CLI, Agent A membuat renderer dan ekspor minimal yang dibutuhkan pipeline karena belum ada implementasi rekan pada berkas tersebut. Agent B melanjutkan integrasi UI/evaluator dan pengembangan renderer/ekspor dengan mempertahankan kontrak serta tes.
-
-Gunakan branch terpisah atau folder kerja terisolasi jika bekerja serentak. Periksa perubahan yang belum digabung sebelum mengedit. Hindari menghapus atau menimpa pekerjaan rekan. Setiap handoff menyertakan perubahan, pemeriksaan yang dijalankan, contoh penggunaan, dan keterbatasan.
-
-## 18. Urutan pengerjaan dan hasil tiap tahap
+## 17. Urutan pengerjaan dan hasil tiap tahap
 
 | Tahap | Pekerjaan | Selesai ketika |
 | --- | --- | --- |
@@ -596,7 +562,7 @@ Gunakan branch terpisah atau folder kerja terisolasi jika bekerja serentak. Peri
 
 Jadwal kalender baru dibuat setelah tenggat dan waktu kerja tim diketahui. Urutan ini menentukan dependensi, bukan estimasi durasi yang sudah disepakati.
 
-## 19. Bahan laporan dan demonstrasi
+## 18. Bahan laporan dan demonstrasi
 
 Laporan memuat masalah, tujuan, lingkup, teori singkat metode yang benar-benar digunakan, sumber data, pipeline, rumus crossing, konfigurasi, rancangan UI, prosedur GT, hasil evaluasi, eksperimen CLAHE, analisis kegagalan, dan kesimpulan berdasarkan hasil aktual.
 
@@ -612,83 +578,31 @@ Pertanyaan yang harus dapat dijawab tim:
 - Apa pengaruh CLAHE berdasarkan data, dan bagaimana hitungan manual dibuat?
 - Apa yang dilakukan tim sendiri dan apa yang berasal dari model/library pretrained?
 
-## 20. Contoh prompt untuk AI agent
-
-### Prompt awal untuk kedua agent
-
-```text
-Baca CONTEXT.md di root proyek dan instruksi repositori sebelum bekerja.
-Jelaskan singkat tujuan, lingkup MVP, status kode, dan kontrak yang relevan
-untuk tugasku. Ikuti definisi crossing dan sumber hitungan pada dokumen.
-Kerjakan tugas yang aku berikan sampai dapat diperiksa. Laporkan berkas yang
-berubah, pemeriksaan yang benar-benar dijalankan, hasil, dan keterbatasan.
-Sinkronkan perubahan kontrak bersama sebelum mengubah pihak pemanggilnya.
-```
-
-### Prompt tugas Agent A
-
-```text
-Mengacu pada CONTEXT.md, kerjakan pipeline CV, konfigurasi, geometri, dan
-counting. Mulai dengan memeriksa kode serta menyelaraskan contracts.py.
-Gunakan YOLO11n + ByteTrack eksplisit dan koordinat citra asli. Implementasikan
-baseline none dahulu, lalu mode CLAHE. Sediakan process_video dan counter
-sesuai kontrak, serta uji perilaku crossing tanpa memerlukan model. Sambungkan
-ekspor/render melalui batas modul bersama yang sudah disepakati dengan B.
-Hindari mengedit UI dan pekerjaan B tanpa koordinasi. Sertakan cara mencoba
-satu video nyata dan nyatakan bila pengujian inferensi belum dapat dijalankan.
-```
-
-### Prompt tugas Agent B
-
-```text
-Mengacu pada CONTEXT.md, kerjakan antarmuka Streamlit, visualisasi, ekspor,
-dan evaluator. Baca kontrak serta kode pipeline A terlebih dahulu. Gunakan
-fixture berlabel jika pipeline belum tersedia, kemudian sambungkan hasil
-nyata. UI dan CSV mengambil hitungan dari event/summary yang sama. Siapkan
-unggah video, pengaturan garis dan label arah, progres/preview melalui
-on_progress, tabel/grafik, serta unduhan. Uji konsistensi ekspor dan evaluator.
-Koordinasikan perubahan contracts.py serta dependensi dengan A sebelum integrasi.
-```
-
-### Prompt integrasi dan pemeriksaan bersama
-
-```text
-Baca CONTEXT.md dan perubahan terbaru kedua bagian. Periksa kecocokan
-kontrak, koordinat, arah, lifecycle tracker/run, dan sumber count. Jalankan
-pengujian relevan serta satu alur video nyata jika data/model tersedia.
-Perbaiki masalah integrasi dalam lingkup MVP. Cocokkan event, ringkasan UI,
-CSV, metadata, dan video hasil. Laporkan hasil aktual, masalah tersisa, serta
-status setiap kriteria selesai tanpa mengarang metrik atau fitur yang belum ada.
-```
-
-## 21. Keputusan awal dan hal yang perlu dikonfirmasi
+## 19. Keputusan awal dan hal yang perlu dikonfirmasi
 
 | Tanggal | Status | Keputusan / alasan |
 | --- | --- | --- |
-| 2026-11-06 | Pilihan pengguna | Topik proyek: penghitung kendaraan, dengan acuan bersama untuk dua anggota dan agent |
 | 2026-11-06 | Usulan baseline | Video unggahan dan kamera diam agar demo dapat diulang serta dievaluasi |
 | 2026-11-06 | Usulan baseline | YOLO11n pretrained + ByteTrack; fokus pada pipeline dan counting sebelum pelatihan tambahan |
 | 2026-11-06 | Usulan baseline | Satu segmen garis, dua arah, satu event per Track ID per garis per run |
 | 2026-11-06 | Usulan baseline | Empat kelas, Streamlit lokal, dan keluaran CSV/JSON/video |
 | 2026-11-06 | Usulan eksperimen | Bandingkan none dengan CLAHE tanpa mengasumsikan peningkatan hasil |
-| 2026-11-06 | Instruksi pengguna | Inisialisasi dan push repositori ke `HUB37T/Vehicle-Tracking`; tambahkan README, aturan Git, dan arahan agent. Implementasi aplikasi tetap tahap berikutnya |
-| 2026-11-06 | Implementasi fondasi | Pengguna meminta mulai dari bagian yang dapat dikerjakan tanpa video. Kontrak, konfigurasi, counter, prapemrosesan, dan simulasi tersedia; simulasi selalu berlabel sintetis |
+| 2026-11-06 | Implementasi fondasi | Kontrak, konfigurasi, counter, prapemrosesan, dan simulasi tersedia; simulasi selalu berlabel sintetis |
 | 2026-11-06 | Lingkungan aktual | Memakai Python 3.12 yang sudah tersedia, dengan dependensi fondasi tercatat di constraints.txt. Integrasi dependensi YOLO/Streamlit diuji pada tahap berikutnya |
-| 2026-11-08 | Integrasi CLI | Pengguna meminta implementasi deteksi/tracking/pipeline. YOLO11n pretrained + ByteTrack, MP4 H.264, CSV/JSON, dan callback tersedia. Renderer/ekspor dasar dibuat untuk uji end-to-end; UI/evaluator tetap tahap Agent B |
+| 2026-11-08 | Integrasi CLI | YOLO11n pretrained + ByteTrack, MP4 H.264, CSV/JSON, dan callback tersedia. Renderer dan ekspor dasar dipakai untuk uji menyeluruh sebelum integrasi UI dan evaluator |
 | 2026-11-08 | Data | Training belum dilakukan; kumpulkan video pengembangan dan uji dengan GT crossing dahulu. Fine-tuning baru dipertimbangkan berdasarkan kegagalan baseline yang terukur |
 | 2026-11-08 | Distribusi bobot | Default prepare-model memakai repositori resmi Ultralytics di Hugging Face dengan revision/checksum; alternatif GitHub tersedia. Analisis tidak mengunduh bobot diam-diam |
 | 2026-11-08 | Materi tambahan | Mode gamma, Gaussian, dan unsharp tersedia di `analyze`. Thresholding, morfologi, CCL, Canny, dan Optical Flow dapat diperiksa melalui `pcd-lab`. Dampak terhadap hitungan diukur terpisah dengan GT |
 | 2026-11-08 | Bukti proses | Run sukses menyertakan panel satu frame untuk konversi warna, CLAHE, YOLO, dan ByteTrack, dengan frame serta status metode tercatat di metadata |
 | 2026-11-08 | UI dan evaluasi awal | Streamlit memakai pipeline yang sama dengan CLI. Evaluator memverifikasi video dan garis terhadap metadata anotasi. Dua klip sudah ditinjau visual awal dan menunggu validasi kedua |
-| 2026-11-08 | Eksperimen yang diizinkan pengguna | DeepSORT ditambahkan sebagai opsi pembanding. ByteTrack `fuse_score: true` tetap pilihan utama. Uji aktual dan keterbatasan dicatat di docs/tracker-safety-evaluation.md |
+| 2026-11-08 | Eksperimen pelacakan | DeepSORT ditambahkan sebagai opsi pembanding. ByteTrack `fuse_score: true` tetap pilihan utama. Uji aktual dan keterbatasan dicatat di docs/tracker-safety-evaluation.md |
 | 2026-11-08 | Audit crossing | Pasangan temporal dibedakan dari identitas terverifikasi. Audit koordinat dan frame ditambahkan tanpa mengubah sumber hitungan, kontrak events.csv, atau anotasi yang sudah dibekukan |
-| 2026-11-15 | Instruksi dan implementasi pengguna | Tambahkan editor garis, uji singkat, diagnostik, perbandingan metode, catatan manual, grafik waktu, dan indikator macet berbasis gerak/keterisian. ByteTrack fuse_score true tetap default; indikator bukan kecepatan fisik |
-| 2026-11-15 | Penundaan pengguna | Pembuatan laporan/PDF ditunda; fokus fitur aplikasi dan pengujiannya |
-| 2026-11-15 | Penyempurnaan pengguna | Bandingkan YOLO11n/YOLO11s tanpa mengubah GT, garis, tracker, atau aturan crossing. YOLO11n tetap default setelah uji awal. Tambahkan riwayat run dan rentang indikasi macet; durasi status run baru mencakup sisa interval sampai akhir video |
-| 2026-11-16 | Perluasan pengguna | Tambahkan antrean/batal, zona per lajur, heatmap, kualitas video, dan label frame manual. Gunakan histogram/Laplacian/FFT/ORB serta filter tambahan yang diuji; pertahankan default model/prapemrosesan karena eksperimen belum menunjukkan peningkatan konsisten. Laporan PDF tetap ditunda |
-| 2026-11-19 | Instruksi pengguna dan tuning lokal | Perbaiki MPV pada rekaman sendiri dan bandingkan dengan run sebelumnya di laptop. Tambahkan ambang crop yang dapat diatur, pelonggaran khusus minivan, dan jejak keputusan CSV/video. Tuning inferensi dibedakan dari pelatihan ulang bobot; evaluasi akurasi menyeluruh tetap memerlukan GT seluruh kendaraan. |
+| 2026-11-15 | Perluasan fitur demo | Tambahkan editor garis, uji singkat, diagnostik, perbandingan metode, catatan manual, grafik waktu, dan indikator macet berbasis gerak/keterisian. ByteTrack fuse_score true tetap default; indikator bukan kecepatan fisik |
+| 2026-11-15 | Perbandingan model | Bandingkan YOLO11n/YOLO11s tanpa mengubah GT, garis, tracker, atau aturan crossing. YOLO11n tetap default setelah uji awal. Tambahkan riwayat run dan rentang indikasi macet; durasi status run baru mencakup sisa interval sampai akhir video |
+| 2026-11-16 | Perluasan fitur pengamatan | Tambahkan antrean/batal, zona per lajur, heatmap, kualitas video, dan label frame manual. Gunakan histogram/Laplacian/FFT/ORB serta filter tambahan yang diuji; pertahankan default model/prapemrosesan karena eksperimen belum menunjukkan peningkatan konsisten. |
+| 2026-11-19 | Tuning inferensi lokal | Perbaiki MPV pada rekaman sendiri dan bandingkan dengan run sebelumnya di laptop. Tambahkan ambang crop yang dapat diatur, pelonggaran khusus minivan, dan jejak keputusan CSV/video. Tuning inferensi dibedakan dari pelatihan ulang bobot; evaluasi akurasi menyeluruh tetap memerlukan GT seluruh kendaraan. |
 | 2026-11-19 | Pengamanan tuning detektor | Uji `agnostic_nms` YOLO26 menghilangkan satu motor nyata pada klip pengembangan lain. Profil lokal memakai filter setelah pemilihan kelas kendaraan untuk kotak mobil/bus/truk hampir identik, dengan motor tidak disaring; parameter global `agnostic_nms` tidak ditambahkan ke produk. |
-| 2026-11-19 | Instruksi kelas dan fine-tuning pengguna | MPV, SUV, angkot, dan van kecil termasuk `car`; bus besar termasuk `bus`. Latih kandidat YOLO26n lokal, pisahkan video sebelum memilih crop, catat asal label, dan uji bobot tanpa pemeriksa MobileNet agar dampak fine-tuning terpisah. Dataset awal kecil tanpa contoh bus; kandidat yang kalah dari pretrained tidak menjadi default. |
+| 2026-11-19 | Aturan kelas dan fine-tuning | MPV, SUV, angkot, dan van kecil termasuk `car`; bus besar termasuk `bus`. Latih kandidat YOLO26n lokal, pisahkan video sebelum memilih crop, catat asal label, dan uji bobot tanpa pemeriksa MobileNet agar dampak fine-tuning terpisah. Dataset awal kecil tanpa contoh bus; kandidat yang kalah dari pretrained tidak menjadi default. |
 | 2026-11-19 | Penghitungan arah dan indikator antrean | Gunakan YOLO26n pretrained dan pemeriksa MPV. Sediakan profil ByteTrack untuk kendaraan rapat sebagai eksperimen dan toleransi sampel gerak terputus pada antrean yang sudah terkonfirmasi. Uji hasil dengan posisi garis yang sama dan periksa perubahan per arah dari video. |
 | 2026-11-19 | Perbaikan crossing kendaraan rapat | Aktifkan konsensus kelas dari observasi dekat garis serta penyaringan duplikasi dari riwayat kotak bersama pada pilihan kendaraan rapat. Catat keputusannya terpisah dari event final. Gunakan bobot YOLO26n pretrained dan periksa A→B serta B→A pada rekaman lokal. |
 | 2026-11-22 | Bukti prapemrosesan di UI | Panel bukti menyesuaikan tahapan visual dengan mode yang dipilih dan memakai frame masukan detektor dari analisis yang sama. |
@@ -704,7 +618,7 @@ Hal yang masih perlu diketahui, tetapi tidak menghalangi pembuatan baseline:
 
 Jika jawaban mengubah lingkup, perbarui bagian terkait dan catat keputusan baru di tabel ini. Checkbox pada bagian 16 diubah berdasarkan bukti implementasi dan verifikasi.
 
-## 22. Referensi teknis awal
+## 20. Referensi teknis awal
 
 Dokumentasi berikut diperiksa pada 6 November 2026. Ini rujukan penggunaan library, bukan bukti kinerja pada video proyek. Detail API mengikuti versi dependensi yang nanti benar-benar diuji tim.
 

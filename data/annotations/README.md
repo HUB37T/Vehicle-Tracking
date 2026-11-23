@@ -8,7 +8,7 @@
 
 Simpan ground truth dan metadata yang boleh dibagikan di folder ini. Berkas CSV di sini dapat masuk version control.
 
-Header GT event sesuai CONTEXT:
+Kolom anotasi perlintasan mengikuti [kontrak anotasi](../../docs/project-design.md#14-data-dan-anotasi-manual).
 
 ```csv
 clip_id,manual_event_id,frame_index,timestamp_seconds,class_name,direction,notes

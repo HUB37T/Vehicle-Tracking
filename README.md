@@ -19,14 +19,11 @@ Analisis bisa dijalankan lewat CLI atau antarmuka lokal Streamlit. Evaluasi awal
 - Ekspor event dan hitungan CSV, metadata JSON, serta video beranotasi.
 - Eksperimen tanpa prapemrosesan versus CLAHE dan evaluasi terhadap anotasi manual.
 
-## Acuan kerja bersama
+## Dokumentasi proyek
 
-- [CONTEXT.md](CONTEXT.md): tujuan, lingkup, aturan counting, rancangan teknis, kontrak data, pembagian kerja, evaluasi, dan contoh prompt untuk agent.
-- [AGENTS.md](AGENTS.md): instruksi awal bagi AI agent yang mengerjakan repositori.
+- [Rancangan teknis](docs/project-design.md) memuat lingkup, aturan penghitungan, arsitektur, kontrak data, dan evaluasi.
 - [.gitignore](.gitignore): mengecualikan data besar, bobot, hasil pemrosesan, lingkungan lokal, dan rahasia.
 - [.gitattributes](.gitattributes): menyamakan akhir baris berkas teks saat bekerja lintas sistem operasi.
-
-Kedua anggota tim menggunakan versi `CONTEXT.md` yang sama. Selaraskan perubahan kontrak bersama sebelum menggabungkan pekerjaan.
 
 ## Mengambil repositori
 
@@ -170,7 +167,7 @@ Jika video lokal `vehicles-3-bytetrack-test.mp4` tersedia, pilih profil **Pemuli
 .\.venv\Scripts\python.exe -m vehicle_counter.cli analyze data/videos/vehicles-3-bytetrack-test.mp4 --config configs/experiments/vehicles-3-congestion.yaml --max-seconds 8
 ```
 
-Untuk video lain, `--max-seconds 5 --congestion-roi 0.05 0.45 0.95 0.95` mengaktifkan indikator pada area ternormalisasi tersebut. Hilangkan `--max-seconds` untuk analisis penuh. Parameter lengkap berada di `CongestionConfig`/bagian `congestion` YAML; lihat [acuan indikator macet](CONTEXT.md#132-indikator-macet-awal).
+Untuk video lain, `--max-seconds 5 --congestion-roi 0.05 0.45 0.95 0.95` mengaktifkan indikator pada area ternormalisasi tersebut. Hilangkan `--max-seconds` untuk analisis penuh. Parameter lengkap berada di `CongestionConfig`/bagian `congestion` YAML; lihat [acuan indikator macet](docs/project-design.md#132-indikator-macet-awal).
 
 ### Kendaraan rapat dan deteksi antrean yang terputus
 
@@ -270,7 +267,7 @@ py -3.12 -m venv .venv-train
 
 Pada laptop pengembangan, `.venv-train` dibuat dengan `--system-site-packages` untuk menggunakan instalasi CUDA yang sudah tersedia. Tidak perlu mengganti paket `.venv` aplikasi. [Panduan fine-tuning Ultralytics](https://docs.ultralytics.com/guides/finetuning-guide/) menjelaskan transfer bobot dan pemilihan lapisan yang dibekukan.
 
-Dataset awal terdiri dari **17 crop area jalan / 76 kotak** untuk training, **5 crop / 30 kotak** untuk validasi, dan **6 crop / 18 kotak** untuk uji, termasuk dua crop jalan kosong. Proposal detektor diperiksa/dikoreksi visual oleh AI agent; label belum ditinjau independen oleh manusia. Ini dataset awal yang sangat kecil, belum mencakup bus besar. Training memakai tiga video jalan terbagi; validasi satu video lain; uji dua video WhatsApp dari sudut kamera lain. Video-video itu sudah dipakai pada eksperimen inferensi sebelumnya, sehingga bukan koleksi uji akhir proyek yang sama sekali belum pernah dilihat.
+Dataset awal terdiri dari **17 crop area jalan / 76 kotak** untuk training, **5 crop / 30 kotak** untuk validasi, dan **6 crop / 18 kotak** untuk uji, termasuk dua crop jalan kosong. Proposal detektor diperiksa dan dikoreksi dengan bantuan AI. Label masih memerlukan tinjauan independen oleh manusia. Ini dataset awal yang sangat kecil, belum mencakup bus besar. Training memakai tiga video jalan terbagi; validasi satu video lain; uji dua video WhatsApp dari sudut kamera lain. Video-video itu sudah dipakai pada eksperimen inferensi sebelumnya, sehingga bukan koleksi uji akhir proyek yang sama sekali belum pernah dilihat.
 
 Manifest label tersimpan lokal di `outputs/fine-tuning-20261119/reviewed-labels.json`. Setiap entri berisi `image`, `source_group` (checksum video asli), `split`, `reviewed`, `reviewer`, dan `boxes` berupa kelas serta kotak piksel `[x1,y1,x2,y2]` relatif pada gambar. Asal video, frame, ROI crop, dan cara pelabelan ikut dicatat. `prepare` menolak frame belum ditinjau, gambar identik yang berulang, dan video sumber yang melintasi split. Folder tujuan harus baru:
 
@@ -347,8 +344,6 @@ Untuk menyimpan data contoh bagi antarmuka:
 .\.venv\Scripts\python.exe -m vehicle_counter.simulation --output outputs/simulation.json
 ```
 
-Lihat [handoff Agent B](docs/agent-b-handoff.md) untuk kontrak yang sudah dapat dipakai temanmu dan batas integrasi yang masih menunggu pipeline video.
-
 ## Menjalankan pemeriksaan
 
 ```powershell
@@ -380,7 +375,7 @@ src/vehicle_counter/visualization.py  Anotasi frame sumber dan lintasan pendek
 src/vehicle_counter/exporting.py      Ekspor CSV dan metadata JSON
 src/vehicle_counter/cli.py            Persiapan bobot, inspeksi, analisis video
 tests/                          Pengujian otomatis
-docs/agent-b-handoff.md          Panduan integrasi untuk teman/Agent B
+docs/project-design.md          Rancangan teknis dan kontrak data
 ```
 
 Antarmuka dan evaluator sudah tersambung. Anotasi awal perlu ditinjau ulang oleh anggota kedua sebelum evaluasi akhir.

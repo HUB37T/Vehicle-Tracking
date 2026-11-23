@@ -2,7 +2,7 @@
 
 Keluaran di folder ini diabaikan Git; README ini tetap dibagikan. Simulasi dapat menghasilkan `outputs/simulation.json`, berlabel sintetis dan bukan hasil inferensi.
 
-Pipeline video memakai `outputs/<run_id>/` untuk events.csv, counts.csv, run.json, dan annotated.mp4 sesuai CONTEXT. Status selesai hanya diberikan setelah verifikasi keluaran. Run gagal dapat memiliki CSV parsial dan log encoder; periksa status metadata sebelum memakai hasil.
+Pipeline video memakai `outputs/<run_id>/` untuk events.csv, counts.csv, run.json, dan annotated.mp4 sesuai [rancangan teknis](../docs/project-design.md#12-format-keluaran-dan-lifecycle-run). Status selesai hanya diberikan setelah verifikasi keluaran. Run gagal dapat memiliki CSV parsial dan log encoder; periksa status metadata sebelum memakai hasil.
 
 UI baru memakai antrean di `outputs/jobs/`: `jobs.sqlite3`, log worker, dan satu folder per pekerjaan berisi salinan video, progres/preview, serta folder run atau batch perbandingan. Pertahankan folder ini jika ingin membuka riwayat atau memberi label frame sumber. Hasil `cancelled` tetap parsial; video parsial tidak diterbitkan sebagai sukses. Hasil lama di `outputs/ui/` tetap dapat dibaca.
 
